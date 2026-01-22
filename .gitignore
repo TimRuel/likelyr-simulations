@@ -1,3 +1,7 @@
+# Experiment results
+experiments/*
+!experiments/README.md
+
 # History files
 .Rhistory
 .Rapp.history
