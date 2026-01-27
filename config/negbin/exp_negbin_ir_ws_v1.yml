@@ -1,0 +1,89 @@
+# ============================================================
+# Experiment metadata
+# ============================================================
+experiment:
+  id: exp_negbin_rws_ir_v1
+  distribution: negative_binomial
+  model: independent_rates
+  estimand: weighted_sum
+  spec_path: specs/negbin/independent_rates_weighted_sum
+  description: >
+    Estimate a separate rate (θ_j) for each negative binomial process using
+    observed counts and known exposure times. No regression structure.
+    ψ is a weighted sum of process-level rates.
+
+# ============================================================
+# Parameter specification
+# ============================================================
+parameter:
+
+  seed: 4972 
+
+  processes:
+    n_processes: 5
+    n_per_process: 10
+    labels: auto_upper
+
+  theta:
+    role: mean
+    distribution: rgamma
+    args: [8.0, 2.0]
+
+  phi:
+    role: dispersion
+    distribution: rgamma
+    args: [10.0, 3.0]
+
+  weights:
+    distribution: runif
+    args: [1, 10]
+    normalize_mean_to: 1.0
+
+  bounds:
+    lower: 1.0e-12
+
+# ============================================================
+# Estimand specification
+# ============================================================
+estimand:
+  increment: 0.5
+  confidence_levels: [0.90, 0.95, 0.99]
+  cutoff_buffer: 0.01
+  uniroot_expand_factor: 0.02
+
+# ============================================================
+# Likelihood specification
+# ============================================================
+likelihood:
+  family: negative_binomial
+  parameterization: mean_dispersion
+  link: log
+
+# ============================================================
+# Nuisance specification
+# ============================================================
+nuisance:
+  p_cutoff: 1.0e-12
+  max_y_cap: 1e6
+
+# ============================================================
+# Optimizer specification
+# ============================================================
+optimizer:
+  localsolver: SLSQP
+  control:
+    xtol_rel: 1.0e-8
+    maxeval: 1000
+  localtol: 1.0e-6
+  max_retries: 10
+  drop_mult: 2
+
+# ============================================================
+# Execution specification
+# ============================================================
+execution:
+  seed: 4854
+  num_workers: 10
+  chunk_size: 1
+  packages: likelyr
+
