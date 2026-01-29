@@ -1,5 +1,7 @@
 generate_data <- function(config, parameter) {
-  n_per_process <- parameter$extra$n_per_process
+  cfg <- config$data
+
+  n_per_process <- cfg$n_per_process
   J <- length(n_per_process)
 
   # --- Split parameter vector
@@ -9,11 +11,11 @@ generate_data <- function(config, parameter) {
 
   # --- Sizes
   total_n <- sum(n_per_process)
-  process_labels <- names(n_per_process)
+  process_labels <- LETTERS[1:J]
 
   # --- Exposure
-  expo <- match.fun(config$exposure$distribution)
-  t <- do.call(expo, c(list(n = total_n), config$exposure$args))
+  expo <- match.fun(cfg$exposure$distribution)
+  t <- do.call(expo, c(list(n = total_n), cfg$exposure$args))
 
   # --- Expand parameters
   theta_i <- rep(theta_0, times = n_per_process)

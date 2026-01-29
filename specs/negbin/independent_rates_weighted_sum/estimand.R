@@ -59,10 +59,7 @@ psi_mle_se_weighted_sum <- function(param_mle, data) {
 # Search interval helper
 # ------------------------------------------------------------
 
-search_interval_weighted_sum <- function(data) {
-  # MLEs (delegated to likelihood helpers)
-  param_mle <- param_mle_fn(data)
-
+search_interval_weighted_sum <- function(param_mle, data) {
   psi_hat <- psi_weighted_sum(param_mle, data)
   psi_se <- psi_mle_se_weighted_sum(param_mle, data)
 

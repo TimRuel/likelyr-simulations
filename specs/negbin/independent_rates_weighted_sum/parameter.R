@@ -69,19 +69,6 @@ normalize_weights <- function(w, cfg) {
   }
 }
 
-expand_n_per_process <- function(npp, n) {
-  if (length(npp) == 1) {
-    return(rep(npp, n))
-  }
-  if (length(npp) == n) {
-    return(npp)
-  }
-  if (length(npp) < n) {
-    return(rep_len(npp, n))
-  }
-  stop("Invalid n_per_process specification.")
-}
-
 # ------------------------------------------------------------
 # Core generator
 # ------------------------------------------------------------
@@ -98,18 +85,14 @@ generate_true_parameters <- function(cfg) {
   weights_raw <- draw_or_use_values(cfg$weights, n, "weights")
   weights <- normalize_weights(weights_raw, cfg$weights)
 
-  npp <- expand_n_per_process(proc_cfg$n_per_process, n)
-
   names(theta) <- labels
   names(phi) <- labels
   names(weights) <- labels
-  names(npp) <- labels
 
   list(
     theta_0 = theta,
     phi_0 = phi,
-    weights = weights,
-    n_per_process = npp
+    weights = weights
   )
 }
 
@@ -136,7 +119,6 @@ make_parameter <- function(config) {
     name = "Negative binomial independent-rate parameters",
     param_0 = c(true_pars$theta_0, true_pars$phi_0),
     param_lower = lower,
-    n_per_process = true_pars$n_per_process,
     weights = true_pars$weights
   )
 }
