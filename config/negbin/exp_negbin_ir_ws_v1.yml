@@ -21,7 +21,6 @@ parameter:
 
   processes:
     n_processes: 5
-    n_per_process: 10
     labels: auto_upper
 
   theta:
@@ -87,3 +86,12 @@ execution:
   chunk_size: 1
   packages: likelyr
 
+# ============================================================
+# Data specification
+# ============================================================
+data:
+  exposure:
+    name: t
+    distribution: runif
+    args: [1, 3]
+  n_per_process: [10, 10, 10, 10, 10]
