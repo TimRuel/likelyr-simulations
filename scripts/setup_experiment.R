@@ -46,9 +46,9 @@ if (is.null(spec_path)) {
   stop("experiment$spec_path must be defined.", call. = FALSE)
 }
 
-spec_dir <- fs::path(root, spec_path)
+spec_dir <- path(root, spec_path)
 
-if (!fs::dir_exists(spec_dir)) {
+if (!dir_exists(spec_dir)) {
   stop("Spec directory not found: ", spec_dir, call. = FALSE)
 }
 

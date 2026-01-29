@@ -2,6 +2,17 @@
 set -euo pipefail
 
 # ===============================
+# ✅ Load environment modules
+# ===============================
+module purge all
+module load R/4.5.1
+
+# --- Prevent BLAS oversubscription ---
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+# ===============================
 # ✅ Validate CLI arguments
 # ===============================
 if [[ $# -ne 1 ]]; then
@@ -49,17 +60,6 @@ if [[ -f "$MODEL_FILE" ]]; then
 fi
 
 # ===============================
-# ✅ Load environment modules
-# ===============================
-module purge all
-module load R/4.5.1
-
-# --- Prevent BLAS oversubscription ---
-export OMP_NUM_THREADS=1
-export OPENBLAS_NUM_THREADS=1
-export MKL_NUM_THREADS=1
-
-# ===============================
 # ✅ Run setup R script
 # ===============================
 RSCRIPT_PATH="scripts/setup_experiment.R"
@@ -70,5 +70,3 @@ if [[ ! -f "$RSCRIPT_PATH" ]]; then
 fi
 
 Rscript "$RSCRIPT_PATH" "$CONFIG_PATH"
-
-echo "✅ Experiment setup complete: $EXP_ID"
