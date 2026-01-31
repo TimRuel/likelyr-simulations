@@ -93,6 +93,7 @@ make_estimand <- function(config) {
 
   increment <- cfg$increment
   confidence_levels <- cfg$confidence_levels
+  gamma <- cfg$gamma
   cutoff_buffer <- cfg$cutoff_buffer
   uniroot_expand_factor <- cfg$uniroot_expand_factor
 
@@ -101,6 +102,7 @@ make_estimand <- function(config) {
       list(
         increment,
         confidence_levels,
+        gamma,
         cutoff_buffer,
         uniroot_expand_factor
       ),
@@ -120,6 +122,7 @@ make_estimand <- function(config) {
     search_interval_fn = search_interval_fn,
     increment = increment,
     confidence_levels = confidence_levels,
+    gamma = gamma,
     cutoff_buffer = cutoff_buffer,
     uniroot_expand_factor = uniroot_expand_factor,
     name = "Weighted Sum (psi)"

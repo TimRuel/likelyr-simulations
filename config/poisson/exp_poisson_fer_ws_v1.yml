@@ -66,6 +66,7 @@ likelihood:
 estimand:
   increment: 0.05
   confidence_levels: [0.90, 0.95, 0.99]
+  gamma: 0.5
   cutoff_buffer: 0.01
   uniroot_expand_factor: 0.02
 

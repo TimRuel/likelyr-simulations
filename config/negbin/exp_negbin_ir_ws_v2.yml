@@ -47,6 +47,7 @@ parameter:
 estimand:
   increment: 0.5
   confidence_levels: [0.10]
+  gamma: 0.5
   cutoff_buffer: 0.01
   uniroot_expand_factor: 0.02
 

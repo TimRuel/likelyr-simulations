@@ -79,12 +79,19 @@ make_estimand <- function(config) {
 
   increment <- cfg$increment
   confidence_levels <- cfg$confidence_levels
+  gamma <- cfg$gamma
   cutoff_buffer <- cfg$cutoff_buffer
   uniroot_expand_factor <- cfg$uniroot_expand_factor
 
   if (
     any(vapply(
-      list(increment, confidence_levels, cutoff_buffer, uniroot_expand_factor),
+      list(
+        increment,
+        confidence_levels,
+        gamma,
+        cutoff_buffer,
+        uniroot_expand_factor
+      ),
       is.null,
       logical(1)
     ))
@@ -101,6 +108,7 @@ make_estimand <- function(config) {
     search_interval_fn = search_interval_weighted_sum,
     increment = increment,
     confidence_levels = confidence_levels,
+    gamma = gamma,
     cutoff_buffer = cutoff_buffer,
     uniroot_expand_factor = uniroot_expand_factor,
     name = "Weighted Sum (psi)"
