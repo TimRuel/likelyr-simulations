@@ -1,0 +1,120 @@
+# ============================================================
+# Experiment metadata
+# ============================================================
+experiment:
+  id: exp_poisson_rws_ir_v1
+  distribution: poisson
+  model: fixed_effects_regression
+  estimand: weighted_sum
+  spec_path: specs/poisson/fixed_effects_regression_weighted_sum
+  description: >
+    Estimate rates of different Poisson processes within a fixed effects regression
+    with covariates.
+
+# ============================================================
+# Parameter specification (CANONICAL SYMBOL DEFINITIONS)
+# ============================================================
+parameter:
+
+  seed: 12345
+
+  processes:
+    labels: [A, B, C, D, E]
+    n_per_process: [13, 14, 11, 15, 12]
+
+  beta:
+    intercepts:
+      type: heterogeneous
+      symbol: &alpha_sym α
+      distribution: rnorm
+      args: [1.5, 0.5]
+
+    slopes:
+
+      - covariate: X1
+        type: homogeneous
+        coefficient:
+          symbol: &gamma1_sym γ1
+          distribution: rnorm
+          args: [0.2, 0.05]
+
+      - covariate: X2
+        type: heterogeneous
+        coefficient:
+          symbol: &zeta2_sym ζ2
+          distribution: rnorm
+          args: [0.5, 0.1]
+  
+  theta:
+    n_mc: 1.0e6
+
+  weights:
+    distribution: runif
+    args: [1, 10]
+    normalize_mean_to: 1.0
+
+# ============================================================
+# Likelihood specification
+# ============================================================
+likelihood:
+  family: poisson
+  link: log
+
+# ============================================================
+# Estimand specification
+# ============================================================
+estimand:
+  increment: 0.05
+  confidence_levels: [0.90, 0.95, 0.99]
+  cutoff_buffer: 0.01
+  uniroot_expand_factor: 0.02
+
+# ============================================================
+# Nuisance specification
+# ============================================================
+nuisance:
+  name: "Poisson rates weighted sum nuisance parameter (ZSE)"
+
+# ============================================================
+# Optimizer specification
+# ============================================================
+optimizer:
+  localsolver: SLSQP
+  control:
+    xtol_rel: 1.0e-8
+    maxeval: 1000
+  localtol: 1.0e-6
+  max_retries: 10
+  drop_mult: 2
+
+# ============================================================
+# Execution specification
+# ============================================================
+execution:
+  seed: 9876
+  num_workers: 12
+  chunk_size: 4
+  packages: likelyr
+
+# ============================================================
+# Data specification (ALIASES → parameter symbols)
+# ============================================================
+data:
+
+  covariates:
+
+    X1:
+      symbol: *gamma1_sym
+      distribution: rexp
+      args: [1.0]
+
+    X2:
+      symbol: *zeta2_sym
+      distribution: rnorm
+      args: [0.0, 1.0]
+
+  exposure:
+    name: t
+    symbol: *alpha_sym
+    distribution: runif
+    args: [2, 4]
