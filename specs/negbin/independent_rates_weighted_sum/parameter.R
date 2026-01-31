@@ -1,5 +1,5 @@
 # ============================================================
-# parameter.R — Efficient parameter factory
+# parameter.R — Parameter factory
 # ============================================================
 
 # ------------------------------------------------------------
@@ -75,12 +75,12 @@ normalize_weights <- function(w, cfg) {
 
 generate_true_parameters <- function(cfg) {
   proc_cfg <- cfg$processes
-  n <- proc_cfg$n_processes
+  J <- proc_cfg$n_processes
 
-  labels <- generate_process_labels(n, proc_cfg$labels)
+  labels <- generate_process_labels(J, proc_cfg$labels)
 
-  theta <- draw_or_use_values(cfg$theta, n, "theta")
-  phi <- draw_or_use_values(cfg$phi, n, "phi")
+  theta <- draw_or_use_values(cfg$theta, J, "theta")
+  phi <- draw_or_use_values(cfg$phi, J, "phi")
 
   weights_raw <- draw_or_use_values(cfg$weights, n, "weights")
   weights <- normalize_weights(weights_raw, cfg$weights)
