@@ -167,6 +167,6 @@ model <- model_spec(
 # ============================================================
 # 12. Save model ready for calibration
 # ============================================================
-saveRDS(model, path(exp_dir, "model", "model_ready.rds"))
+saveRDS(model, path(exp_dir, "model", "model.rds"))
 
 message("✅ Experiment setup complete: ", exp_id)

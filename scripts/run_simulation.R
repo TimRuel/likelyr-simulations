@@ -84,7 +84,7 @@ dir_create(sim_dir, recurse = TRUE)
 # ============================================================
 # Load invariant experiment objects
 # ============================================================
-model_path <- file.path(exp_dir, "model", "model_ready.rds")
+model_path <- file.path(exp_dir, "model", "model.rds")
 
 if (!file.exists(model_path)) {
   stop(
@@ -154,7 +154,7 @@ model <- model |>
 # ============================================================
 # Configure parallel execution (if requested)
 # ============================================================
-exec <- model_c$execution
+exec <- model$execution
 use_parallel <- exec$mode == "parallel"
 
 if (use_parallel) {
