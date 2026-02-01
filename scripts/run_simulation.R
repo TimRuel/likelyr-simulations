@@ -203,5 +203,5 @@ model <- model |>
 # ============================================================
 saveRDS(
   model,
-  file.path(sim_dir, "model_cip.rds")
+  file.path(sim_dir, "model.rds")
 )
