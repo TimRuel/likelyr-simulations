@@ -93,8 +93,8 @@ optimizer:
 # ============================================================
 execution:
   seed: 9876
-  num_workers: 12
-  chunk_size: 4
+  num_workers: 64
+  chunk_size: 1
   packages: likelyr
 
 # ============================================================
