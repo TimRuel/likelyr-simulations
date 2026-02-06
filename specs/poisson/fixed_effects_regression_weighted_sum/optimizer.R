@@ -14,6 +14,7 @@ make_optimizer <- function(config) {
     localtol = cfg$localtol,
     max_retries = cfg$max_retries,
     drop_mult = cfg$drop_mult,
+    branch_mode_params = cfg$branch_mode_params,
     name = "Optimizer spec"
   )
 }

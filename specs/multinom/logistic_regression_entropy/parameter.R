@@ -19,5 +19,7 @@ make_parameter <- function(config) {
   parameter_spec(
     name = "Multinomial cell probabilities",
     param_0 = theta_0,
+    param_lower = param_cfg$lower,
+    param_upper = param_cfg$upper
   )
 }
