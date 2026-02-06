@@ -1,0 +1,69 @@
+# ============================================================
+# Experiment metadata
+# ============================================================
+experiment:
+  id: exp_multinom_lr_entropy_v1
+  distribution: multinomial
+  model: logistic_regression
+  estimand: entropy
+  spec_path: specs/multinom/logistic_regression_entropy
+  description: >
+    Estimate entropy of cell probabilities for a multinomial distribution 
+    under a logistic regression framework
+
+# ============================================================
+# Parameter specification 
+# ============================================================
+parameter:
+  seed: 9444
+  J: 6
+
+# ============================================================
+# Likelihood specification
+# ============================================================
+likelihood:
+  family: multinomial
+  link: logit
+
+# ============================================================
+# Estimand specification
+# ============================================================
+estimand:
+  increment: 0.05
+  confidence_levels: [0.90, 0.95, 0.99]
+  gamma: 0.5
+  cutoff_buffer: 0.01
+  uniroot_expand_factor: 0.02
+
+# ============================================================
+# Nuisance specification
+# ============================================================
+nuisance:
+  name: "Multinomial cell probabilities entropy nuisance parameter (ZSE)"
+
+# ============================================================
+# Optimizer specification
+# ============================================================
+optimizer:
+  localsolver: SLSQP
+  control:
+    xtol_rel: 1.0e-8
+    maxeval: 1000
+  localtol: 1.0e-6
+  max_retries: 10
+  drop_mult: 2
+
+# ============================================================
+# Execution specification
+# ============================================================
+execution:
+  seed: 1009
+  num_workers: 4
+  chunk_size: 1
+  packages: likelyr
+
+# ============================================================
+# Data specification
+# ============================================================
+data:
+  n_obs: 25
