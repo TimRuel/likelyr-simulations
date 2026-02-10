@@ -21,6 +21,8 @@ make_estimand <- function(config) {
   gamma <- cfg$gamma
   cutoff_buffer <- cfg$cutoff_buffer
   uniroot_expand_factor <- cfg$uniroot_expand_factor
+  psi_lower <- cfg$psi_lower
+  psi_upper <- log(config$parameter$J)
 
   if (
     any(vapply(
@@ -29,7 +31,9 @@ make_estimand <- function(config) {
         confidence_levels,
         gamma,
         cutoff_buffer,
-        uniroot_expand_factor
+        uniroot_expand_factor,
+        psi_lower,
+        psi_upper
       ),
       is.null,
       logical(1)
@@ -50,6 +54,8 @@ make_estimand <- function(config) {
     gamma = gamma,
     cutoff_buffer = cutoff_buffer,
     uniroot_expand_factor = uniroot_expand_factor,
-    name = "Weighted Sum (psi)"
+    psi_lower = psi_lower,
+    psi_upper = psi_upper,
+    name = "Entropy (psi)"
   )
 }

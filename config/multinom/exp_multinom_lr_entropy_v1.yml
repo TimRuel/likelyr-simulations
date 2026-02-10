@@ -15,8 +15,11 @@ experiment:
 # Parameter specification 
 # ============================================================
 parameter:
-  seed: 9444
+  seed: 1776
   J: 6
+  alpha: 2
+  lower: 1.0e-6
+  upper: 1.0
 
 # ============================================================
 # Likelihood specification
@@ -29,11 +32,15 @@ likelihood:
 # Estimand specification
 # ============================================================
 estimand:
-  increment: 0.05
-  confidence_levels: [0.90, 0.95, 0.99]
-  gamma: 0.5
-  cutoff_buffer: 0.01
+  increment: 0.01
+  confidence_levels:
+    - 0.9
+    - 0.95
+    - 0.99
+  gamma: 0.9
+  cutoff_buffer: 0.05
   uniroot_expand_factor: 0.02
+  psi_lower: 0.0
 
 # ============================================================
 # Nuisance specification
@@ -47,19 +54,26 @@ nuisance:
 optimizer:
   localsolver: SLSQP
   control:
-    xtol_rel: 1.0e-8
+    xtol_rel: 1.0e-08
     maxeval: 1000
-  localtol: 1.0e-6
-  max_retries: 10
-  drop_mult: 2
+  localtol: 1.0e-06
+  max_retries: 50
+  stop_at_bounds: TRUE
+  eval_at_bounds: TRUE
+  branch_mode_locator_method: hybrid
+  branch_agg_args:
+    min_points: 10
+    q_delta: 0.50
+    delta_min: 20
+    delta_max: 80
+    min_support: NULL
 
 # ============================================================
 # Execution specification
 # ============================================================
 execution:
-  seed: 1009
-  num_workers: 4
-  chunk_size: 1
+  seed: 2749
+  R: 1000
   packages: likelyr
 
 # ============================================================
