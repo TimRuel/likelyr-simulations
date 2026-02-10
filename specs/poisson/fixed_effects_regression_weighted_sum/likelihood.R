@@ -2,13 +2,19 @@
 # likelihood.R — Likelihood factory
 # ============================================================
 
+# loglik <- function(param, data) {
+#   X <- attr(data, "X")
+
+#   eta <- drop(X %*% param)
+#   mu <- data$t * exp(eta)
+
+#   sum(data$Y * (log(data$t) + eta) - mu - lgamma(data$Y + 1))
+# }
+
 loglik <- function(param, data) {
   X <- attr(data, "X")
-
   eta <- drop(X %*% param)
-  mu <- data$t * exp(eta)
-
-  sum(data$Y * (log(data$t) + eta) - mu - lgamma(data$Y + 1))
+  sum(data$Y * eta - data$t * exp(eta))
 }
 
 # ------------------------------------------------------------
