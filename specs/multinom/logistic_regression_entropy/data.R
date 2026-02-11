@@ -6,8 +6,8 @@ generate_data <- function(config, parameter) {
 
   J <- length(theta_0)
 
-  counts <- rmultinom(n, J, theta_0) |>
-    rowSums()
+  counts <- rmultinom(1, n, theta_0) |>
+    c()
 
   data.frame(
     cell = names(theta_0),
