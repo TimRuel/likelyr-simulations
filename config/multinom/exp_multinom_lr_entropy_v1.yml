@@ -15,7 +15,7 @@ experiment:
 # Parameter specification 
 # ============================================================
 parameter:
-  seed: 1776
+  seed: 7236
   J: 6
   alpha: 2
   lower: 1.0e-6
@@ -63,7 +63,7 @@ optimizer:
   branch_mode_locator_method: hybrid
   branch_agg_args:
     min_points: 10
-    q_delta: 0.50
+    q_delta: 0.10
     delta_min: 20
     delta_max: 80
     min_support: NULL
@@ -72,7 +72,7 @@ optimizer:
 # Execution specification
 # ============================================================
 execution:
-  seed: 2749
+  seed: 1797
   R: 1000
   packages: likelyr
 
