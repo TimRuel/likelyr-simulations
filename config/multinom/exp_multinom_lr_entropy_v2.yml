@@ -63,7 +63,7 @@ optimizer:
   branch_mode_locator_method: hybrid
   branch_agg_args:
     min_points: 10
-    q_delta: 0.10
+    q_delta: 0.20
     delta_min: 20
     delta_max: 80
     min_support: NULL
@@ -73,7 +73,7 @@ optimizer:
 # ============================================================
 execution:
   seed: 9405 
-  R: 1000
+  R: 5000
   packages: likelyr
 
 # ============================================================

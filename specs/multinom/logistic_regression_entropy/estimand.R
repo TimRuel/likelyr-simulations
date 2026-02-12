@@ -1,9 +1,13 @@
-psi_fn <- function(param, data) {
-  -sum(param * log(param))
+psi_fn <- function(param, data = NULL) {
+  eps <- 1e-6
+  p <- pmax(param, eps)
+  -sum(p * log(p))
 }
 
-psi_jac <- function(param, data) {
-  -(log(param) + 1)
+psi_jac <- function(param, data = NULL) {
+  eps <- 1e-6
+  p <- pmax(param, eps)
+  -(log(p) + 1)
 }
 
 search_interval_fn <- function(param_mle, data) {
