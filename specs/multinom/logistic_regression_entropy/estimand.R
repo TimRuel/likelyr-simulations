@@ -1,13 +1,17 @@
 psi_fn <- function(param, data = NULL) {
-  eps <- 1e-6
-  p <- pmax(param, eps)
+  p <- softmax_from_eta(param)
   -sum(p * log(p))
 }
 
 psi_jac <- function(param, data = NULL) {
-  eps <- 1e-6
-  p <- pmax(param, eps)
-  -(log(p) + 1)
+  p <- softmax_from_eta(param)
+
+  H <- -sum(p * log(p))
+
+  # gradient wrt first J-1 logits
+  grad <- -p[-length(p)] * (log(p[-length(p)]) + H)
+
+  grad
 }
 
 search_interval_fn <- function(param_mle, data) {
