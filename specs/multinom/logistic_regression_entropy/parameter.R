@@ -27,10 +27,66 @@ theta_to_eta <- function(theta) {
 
 generate_eta_0 <- function(param_cfg) {
   J <- param_cfg$J
-  alpha <- param_cfg$alpha %||% 2
 
-  theta_0 <- LaplacesDemon::rdirichlet(1, rep(alpha, J)) |>
-    as.numeric()
+  # ------------------------------------------------------------
+  # Determine entropy target
+  # ------------------------------------------------------------
+
+  H_max <- log(J)
+
+  if (!is.null(param_cfg$entropy_target_frac)) {
+    H_target <- param_cfg$entropy_target_frac * H_max
+  } else if (!is.null(param_cfg$entropy_target)) {
+    H_target <- param_cfg$entropy_target
+  } else {
+    stop(
+      "Must supply entropy_target_frac or entropy_target in parameter config.",
+      call. = FALSE
+    )
+  }
+
+  # ------------------------------------------------------------
+  # Entropy function for one-big + uniform remainder family
+  # ------------------------------------------------------------
+
+  H_of_a <- function(a) {
+    if (a <= 0 || a >= 1) {
+      return(-Inf)
+    }
+
+    p1 <- a
+    prest <- (1 - a) / (J - 1)
+
+    -p1 * log(p1) - (J - 1) * prest * log(prest)
+  }
+
+  # ------------------------------------------------------------
+  # Solve H(a) = H_target
+  # ------------------------------------------------------------
+
+  # lower bound slightly above 1/J (uniform)
+  a_lower <- 1 / J
+  a_upper <- 1 - 1e-8
+
+  root <- uniroot(
+    function(a) H_of_a(a) - H_target,
+    lower = a_lower,
+    upper = a_upper
+  )
+
+  a_star <- root$root
+
+  theta_0 <- c(
+    a_star,
+    rep((1 - a_star) / (J - 1), J - 1)
+  )
+
+  theta_0 <- theta_0 + runif(J, 0, 1e-6)
+  theta_0 <- theta_0 / sum(theta_0)
+
+  # ------------------------------------------------------------
+  # Convert to logits
+  # ------------------------------------------------------------
 
   eta_0 <- theta_to_eta(theta_0)
 

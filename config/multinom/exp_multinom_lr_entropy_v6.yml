@@ -2,7 +2,7 @@
 # Experiment metadata
 # ============================================================
 experiment:
-  id: exp_multinom_lr_entropy_v2
+  id: exp_multinom_lr_entropy_v6
   distribution: multinomial
   model: logistic_regression
   estimand: entropy
@@ -15,9 +15,9 @@ experiment:
 # Parameter specification 
 # ============================================================
 parameter:
-  seed: 9553 
-  J: 8
-  entropy_target_frac: 0.25  
+  seed: 1225 
+  J: 16
+  entropy_target_frac: 0.5  
   lower: 0.0
   upper: 1.0
 
@@ -72,7 +72,7 @@ optimizer:
 # Execution specification
 # ============================================================
 execution:
-  seed: 1545
+  seed: 6098
   R: 250
   packages: likelyr
 

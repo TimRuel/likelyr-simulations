@@ -16,8 +16,8 @@ experiment:
 # ============================================================
 parameter:
   seed: 7236
-  J: 6
-  alpha: 2
+  J: 4
+  entropy_target_frac: 0.25 
   lower: 0.0
   upper: 1.0
 
@@ -80,4 +80,4 @@ execution:
 # Data specification
 # ============================================================
 data:
-  n_obs: 25
+  n_obs: 800

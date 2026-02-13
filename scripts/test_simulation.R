@@ -124,9 +124,7 @@ model_ic <- model |>
   infer() |>
   compare()
 
-model_ic$workspace$integrate$inference |> plot()
-model_ic$workspace$profile$inference |> plot()
-model_ic$workspace$comparison |> plot()
+model_ic$workspace$comparison |> view()
 
 # =============================================================================
 # End of Script

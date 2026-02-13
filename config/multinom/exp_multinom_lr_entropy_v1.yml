@@ -15,9 +15,9 @@ experiment:
 # Parameter specification 
 # ============================================================
 parameter:
-  seed: 7236
-  J: 6
-  alpha: 2
+  seed: 7371
+  J: 4
+  entropy_target_frac: 0.25  
   lower: 0.0
   upper: 1.0
 
@@ -72,12 +72,12 @@ optimizer:
 # Execution specification
 # ============================================================
 execution:
-  seed: 1797
-  R: 500
+  seed: 5083 
+  R: 250
   packages: likelyr
 
 # ============================================================
 # Data specification
 # ============================================================
 data:
-  n_obs: 25
+  n_obs: 800
