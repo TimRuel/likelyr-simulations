@@ -29,8 +29,8 @@ base_simulation:
     link: logit
 
   estimand:
-    increment: 0.05
-    confidence_levels: [0.1]
+    increment: 0.01
+    confidence_levels: [0.3]
     gamma: 0.9
     cutoff_buffer: 0.05
     uniroot_expand_factor: 0.02

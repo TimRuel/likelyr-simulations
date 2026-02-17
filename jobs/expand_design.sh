@@ -12,10 +12,12 @@ set -euo pipefail
 # ============================================================
 
 # ===============================
-# Load environment modules
+# Load environment modules (HPC only)
 # ===============================
-module purge all
-module load R/4.5.1
+if command -v module >/dev/null 2>&1; then
+  module purge
+  module load R/4.5.1
+fi
 
 # --- Prevent BLAS oversubscription ---
 export OMP_NUM_THREADS=1

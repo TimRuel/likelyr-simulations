@@ -81,3 +81,13 @@ model <- readRDS(model_path)
 model <- model |>
   infer() |>
   compare()
+
+model$workspace$integrate |> plot()
+model$workspace$profile |> plot()
+
+model$workspace$integrate$inference |> plot()
+model$workspace$profile$inference |> plot()
+
+model$workspace$comparison |> plot()
+
+model$workspace$comparison |> view()

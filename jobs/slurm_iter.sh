@@ -25,11 +25,13 @@ set -euo pipefail
 # ============================================================
 
 # ===============================
-# Load environment modules
+# Load environment modules (HPC only)
 # ===============================
-module purge
-module load R/4.5.1
-module load nlopt/2.7.1-gcc-12.3.0
+if command -v module >/dev/null 2>&1; then
+  module purge
+  module load R/4.5.1
+  module load nlopt/2.7.1-gcc-12.3.0
+fi
 
 # --- Prevent BLAS oversubscription ---
 export OMP_NUM_THREADS=1
