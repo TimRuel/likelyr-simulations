@@ -8,37 +8,78 @@ suppressPackageStartupMessages({
 })
 
 # ============================================================
+# build_model_spec.R
+#
+# Build and persist a model specification for a single simulation.
+#
+# Contract:
+#   • Called once per simulation
+#   • Receives path to:
+#       experiments/<experiment>/<simulation>/simulation.yml
+#   • Assumes directory structure already exists
+#   • Builds and saves:
+#       experiments/<experiment>/<simulation>/model/model.rds
+#   • NO data generation
+#   • NO calibration
+#   • Refuses to overwrite an existing model spec
+# ============================================================
+
+# ============================================================
 # 1. Anchor project root
 # ============================================================
 root <- here()
 
-# -------------------------------
+# ============================================================
 # 2. Load local utilities
-# -------------------------------
-source(file.path(root, "scripts", "utils.R"))
+# ============================================================
+source(
+  file.path(root, "scripts", "utils.R"),
+  local = TRUE
+)
 
 # ============================================================
-# 3. Read config
+# 3. Parse CLI arguments
 # ============================================================
 args <- commandArgs(trailingOnly = TRUE)
 
-if (length(args) != 1) {
+if (length(args) != 1L) {
   stop(
-    "Usage: Rscript setup_experiment.R <path/to/experiment/config.yml>",
+    "Usage: Rscript build_model_spec.R <path/to/simulation.yml>",
     call. = FALSE
   )
 }
 
-config_path <- path_abs(args[1])
+sim_config_path <- path_abs(args[[1]])
 
-if (!file_exists(config_path)) {
-  stop("Config file not found: ", config_path, call. = FALSE)
+if (!file_exists(sim_config_path)) {
+  stop("Simulation config not found: ", sim_config_path, call. = FALSE)
 }
 
-config <- read_yaml(config_path)
+# ============================================================
+# 4. Resolve simulation directory (authoritative)
+# ============================================================
+sim_dir <- path_dir(sim_config_path)
+model_path <- path(sim_dir, "model", "model.rds")
+
+if (!dir_exists(sim_dir)) {
+  stop("Simulation directory does not exist: ", sim_dir, call. = FALSE)
+}
+
+# Model specs are immutable once built
+if (file_exists(model_path)) {
+  stop("Model already exists: ", model_path, call. = FALSE)
+}
+
+message("🧩 Building model specification for:")
+message("   ", sim_dir)
 
 # ============================================================
-# 4. Resolve spec directory
+# 5. Read simulation config snapshot
+# ============================================================
+config <- read_yaml(sim_config_path)
+
+# ============================================================
+# 6. Resolve spec directory
 # ============================================================
 spec_path <- config$experiment$spec_path
 
@@ -74,28 +115,7 @@ if (length(missing_files)) {
 }
 
 # ============================================================
-# 6. Create experiment directory structure
-# ============================================================
-exp <- config$experiment
-if (is.null(exp$id)) {
-  stop("experiment$id must be defined in config", call. = FALSE)
-}
-
-exp_id <- exp$id
-
-exp_dir <- path(root, "experiments", exp_id)
-
-dir_create(exp_dir)
-dir_create(path(exp_dir, "model"))
-dir_create(path(exp_dir, "simulations"))
-
-# ============================================================
-# 7. Freeze config
-# ============================================================
-write_yaml(config, path(exp_dir, "experiment.yml"))
-
-# ============================================================
-# 8. Source model specs into isolated environment
+# 7. Source model specs into isolated environment
 # ============================================================
 spec_env <- load_spec_env(spec_dir)
 
@@ -107,7 +127,7 @@ source(path(spec_dir, "optimizer.R"), local = spec_env)
 source(path(spec_dir, "execution.R"), local = spec_env)
 
 # ============================================================
-# 9. Validate required factories
+# 8. Validate required factory functions
 # ============================================================
 required_fns <- c(
   "make_parameter",
@@ -137,7 +157,7 @@ if (length(missing_fns)) {
 }
 
 # ============================================================
-# 10. Build spec objects via factories
+# 9. Build spec objects
 # ============================================================
 parameter <- spec_env$make_parameter(config)
 likelihood <- spec_env$make_likelihood(config)
@@ -147,14 +167,14 @@ optimizer <- spec_env$make_optimizer(config)
 execution <- spec_env$make_execution(config)
 
 # ============================================================
-# 11. Assemble model_spec (NO DATA)
+# 10. Assemble model_spec (STRUCTURE ONLY)
 # ============================================================
 model <- model_spec(
   name = sprintf(
     "%s — %s / %s",
-    exp$distribution,
-    exp$model,
-    exp$estimand
+    config$experiment$distribution,
+    config$experiment$model,
+    config$experiment$estimand
   )
 ) |>
   add(parameter) |>
@@ -165,8 +185,9 @@ model <- model_spec(
   add(execution)
 
 # ============================================================
-# 12. Save model ready for calibration
+# 11. Save model specification
 # ============================================================
-saveRDS(model, path(exp_dir, "model", "model.rds"))
+saveRDS(model, model_path)
 
-message("✅ Experiment setup complete: ", exp_id)
+message("✅ Model specification built:")
+message("   ", model_path)
