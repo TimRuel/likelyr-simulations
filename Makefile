@@ -72,7 +72,7 @@ ifndef EXP_CONFIG
 endif
 	@echo "▶ Submitting experiment to Slurm"
 	@EXP_CFG_DIR=$(patsubst %/,%,$(dir $(EXP_CONFIG))); \
-	EXP_REL=$(patsubst $(CONFIG_DIR)/%,%,$$EXP_CFG_DIR); \
+	EXP_REL=$$(realpath --relative-to=$(CONFIG_DIR) $$EXP_CFG_DIR); \
 	EXP_RUN_DIR=$(EXPERIMENTS_DIR)/$$EXP_REL; \
 	bash $(JOBS_DIR)/submit_exp.sh $$EXP_RUN_DIR/experiment.yml
 
@@ -86,17 +86,9 @@ experiment: setup submit
 # Analyze experiment
 # -------------------------------------------------
 analyze:
-ifndef EXP_CONFIG
-	$(error EXP_CONFIG must be set, e.g. EXP_CONFIG=config/multinom/baseline_logit/experiment.yml)
-endif
-	@EXP_CFG_DIR=$(patsubst %/,%,$(dir $(EXP_CONFIG))); \
-	EXP_REL=$(patsubst $(CONFIG_DIR)/%,%,$$EXP_CFG_DIR); \
-	EXP_RUN_DIR=$(EXPERIMENTS_DIR)/$$EXP_REL; \
-	echo "▶ Analyzing experiment"; \
-	test -f $$EXP_RUN_DIR/experiment.yml || \
-	  (echo "❌ Missing experiment snapshot. Run make setup first." && exit 1); \
-	module purge && module load R/4.5.1 && \
-	Rscript $(SCRIPTS_DIR)/analyze_sims.R $$EXP_RUN_DIR/experiment.yml
+	@echo "▶ Analyzing simulations"
+	./jobs/analyze_all_sims.sh $(EXP_DIR)
+
 
 # -------------------------------------------------
 # Test single iteration locally (no Slurm)
@@ -119,7 +111,7 @@ ifndef EXP_CONFIG
 	$(error EXP_CONFIG must be set, e.g. EXP_CONFIG=config/multinom/baseline_logit/experiment.yml)
 endif
 	@EXP_CFG_DIR=$(patsubst %/,%,$(dir $(EXP_CONFIG))); \
-	EXP_REL=$(patsubst $(CONFIG_DIR)/%,%,$$EXP_CFG_DIR); \
+	EXP_REL=$$(realpath --relative-to=$(CONFIG_DIR) $$EXP_CFG_DIR); \
 	EXP_RUN_DIR=$(EXPERIMENTS_DIR)/$$EXP_REL; \
 	echo "▶ DRY RUN"; \
 	echo ""; \

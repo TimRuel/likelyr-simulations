@@ -2,7 +2,7 @@
 # Experiment metadata
 # ============================================================
 experiment:
-  name: multinom_baseline_logit_entropy
+  name: multinom_logistic_regression_entropy
   description: >
     DOE exploring IL vs PL across J, n, and entropy
 
@@ -13,10 +13,10 @@ base_simulation:
 
   experiment:
     distribution: multinomial
-    model: baseline_logit
+    model: logistic_regression
     estimand: entropy
-    spec_path: specs/multinom/logit_entropy
-    seed_base: 4000
+    spec_path: specs/multinom/lr_entropy
+    seed_base: 5000
 
   parameter:
     J: 5
