@@ -1,0 +1,20 @@
+# ============================================================
+# optimizer.R — Optimizer factory
+# ============================================================
+
+make_optimizer <- function(config) {
+  cfg <- config$optimizer
+  if (is.null(cfg)) {
+    stop("Config must contain an 'optimizer' section.", call. = FALSE)
+  }
+
+  optimizer_spec(
+    localsolver = cfg$localsolver,
+    control = cfg$control,
+    localtol = cfg$localtol,
+    max_retries = cfg$max_retries,
+    drop_mult = cfg$drop_mult,
+    branch_agg_args = cfg$branch_agg_args,
+    name = "Optimizer spec"
+  )
+}
