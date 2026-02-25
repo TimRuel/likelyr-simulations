@@ -15,7 +15,8 @@ psi_jac <- function(param, data = NULL) {
 }
 
 search_interval_fn <- function(param_mle, data) {
-  c(1 / length(param_mle), 1)
+  J <- length(param_mle) + 1
+  c(1 / J, 1)
 }
 
 make_estimand <- function(config) {

@@ -91,3 +91,19 @@ model$workspace$profile$inference |> plot()
 model$workspace$comparison |> plot()
 
 model$workspace$comparison |> view()
+
+psi_fn <- model$estimand$psi_fn
+
+loglik <- model$likelihood$loglik
+
+init <- model$nuisance$omega_hat_initgen()
+
+omega_hat <- model$nuisance$omega_hat_sampler(init)
+
+omega_hat
+
+omega_hat |>
+  psi_fn()
+
+omega_hat |>
+  loglik()
