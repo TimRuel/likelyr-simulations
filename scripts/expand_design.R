@@ -3,22 +3,47 @@
 # =============================================================================
 # expand_design.R
 #
-# Expand a declarative experiment.yml into concrete sim_XX.yml files.
+# Expand a declarative exp_vX.yml into concrete sim_XX.yml files.
 #
-# Takes a single experiment.yml that contains:
-#   • base_simulation: a full simulation template (nested YAML)
-#   • design: how simulations differ (grid or explicit points)
+# Reads from (manual, never written to):
+#   config/<path>/exp_vX.yml
 #
-# Writes:
-#   config/<experiment>/sim_01.yml, sim_02.yml, ...
+# Writes to:
+#   experiments/<path>/<version>/sim_01/sim_01.yml
+#   experiments/<path>/<version>/sim_02/sim_02.yml
+#   ...
+#
+# The top-level experiment: block is automatically propagated into each sim
+# yaml's experiment: section — it does not need to be repeated in
+# base_simulation:.
+#
+# Each generated sim yaml has the following top-level structure (in order):
+#   experiment:   version, distribution, model, estimand, spec_path, seed_base
+#   simulation:   sim_id, seed_base, iterations
+#   design:       design_type, overrides
+#   parameter:    ...  (seed:      = sim_seed_base, sim-level)
+#   likelihood:   ...
+#   sampler:      ...  (seed_base: = sim_seed_base + 10000, iter-level)
+#   traversal:    ...
+#   solver:       ...
+#   execution:    ...
+#   data:         ...  (seed_base: = sim_seed_base + 20000, iter-level)
+#
+# Seed hierarchy:
+#   experiment.seed_base                              — exp-level anchor
+#   simulation.seed_base = exp_seed_base + i*100000  — sim-level space
+#   parameter.seed       = sim_seed_base             — sim-level (setup time)
+#   sampler.seed_base    = sim_seed_base + 10000     — iter: + iter_index
+#   data.seed_base       = sim_seed_base + 20000     — iter: + iter_index
 #
 # Usage:
-#   Rscript scripts/expand_design.R config/<experiment>/experiment.yml
+#   Rscript scripts/expand_design.R config/<path>/exp_vX.yml
 #
 # Notes:
 #   • Overrides are specified via dotted paths (e.g., "parameter.J").
 #   • For each design point, base_simulation is deep-copied and overridden.
-#   • Each sim config receives attached design metadata for provenance.
+#   • The working directory must be the project root (expand_design.sh
+#     guarantees this).
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -38,7 +63,7 @@ suppressPackageStartupMessages({
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) != 1L) {
   stop(
-    "Usage: Rscript expand_design.R <path/to/experiment.yml>",
+    "Usage: Rscript expand_design.R <path/to/exp_vX.yml>",
     call. = FALSE
   )
 }
@@ -54,7 +79,6 @@ exp_dir <- fs::path_dir(exp_yml)
 # Helpers
 # -----------------------------------------------------------------------------
 
-# Split dotted path into tokens
 path_tokens <- function(p) {
   if (!is.character(p) || length(p) != 1L || !nzchar(p)) {
     stop("Invalid factor path: must be a non-empty string.", call. = FALSE)
@@ -62,11 +86,11 @@ path_tokens <- function(p) {
   strsplit(p, "\\.", fixed = FALSE)[[1]]
 }
 
-# Safe check whether a path exists in a nested list
+# Uses %in% names() so keys with NULL values are correctly found
 has_path <- function(x, tokens) {
   cur <- x
   for (t in tokens) {
-    if (!is.list(cur) || is.null(cur[[t]])) {
+    if (!is.list(cur) || !(t %in% names(cur))) {
       return(FALSE)
     }
     cur <- cur[[t]]
@@ -74,7 +98,6 @@ has_path <- function(x, tokens) {
   TRUE
 }
 
-# Set a nested value by dotted path
 set_by_path <- function(x, path, value, require_existing = TRUE) {
   tokens <- path_tokens(path)
   if (require_existing && !has_path(x, tokens)) {
@@ -97,9 +120,12 @@ set_by_path <- function(x, path, value, require_existing = TRUE) {
   set_rec(x, tokens, value)
 }
 
-# Normalize scalars for YAML
+# Whole numbers become integers (avoids 9.0, 18.0 etc. in YAML output)
 normalize_scalar <- function(v) {
   if (is.numeric(v) && length(v) == 1L && is.finite(v)) {
+    if (v == as.integer(v)) {
+      return(as.integer(v))
+    }
     return(as.numeric(v))
   }
   if (is.logical(v) && length(v) == 1L) {
@@ -111,21 +137,16 @@ normalize_scalar <- function(v) {
   v
 }
 
-# Expand a grid design
 expand_grid_design <- function(factors) {
   if (!is.list(factors) || length(factors) == 0L) {
     stop("design$factors must be a non-empty mapping.", call. = FALSE)
   }
-
   factor_names <- sort(names(factors))
   if (any(!nzchar(factor_names))) {
     stop("All design$factors keys must be non-empty strings.", call. = FALSE)
   }
-
-  values_list <- lapply(factor_names, function(nm) factors[[nm]])
-  names(values_list) <- factor_names
-
-  values_list <- lapply(values_list, function(v) {
+  values_list <- lapply(factor_names, function(nm) {
+    v <- factors[[nm]]
     if (is.null(v)) {
       stop("design$factors contains NULL values.", call. = FALSE)
     }
@@ -134,19 +155,15 @@ expand_grid_design <- function(factors) {
     }
     unlist(v, recursive = TRUE, use.names = FALSE)
   })
-
+  names(values_list) <- factor_names
   grid <- expand.grid(
     values_list,
     KEEP.OUT.ATTRS = FALSE,
     stringsAsFactors = FALSE
   )
-
-  lapply(seq_len(nrow(grid)), function(i) {
-    as.list(grid[i, , drop = FALSE])
-  })
+  lapply(seq_len(nrow(grid)), function(i) as.list(grid[i, , drop = FALSE]))
 }
 
-# Expand explicit points design
 expand_points_design <- function(points) {
   if (!is.list(points) || length(points) == 0L) {
     stop("design$points must be a non-empty list.", call. = FALSE)
@@ -167,27 +184,39 @@ expand_points_design <- function(points) {
 }
 
 # -----------------------------------------------------------------------------
-# Load experiment.yml
+# Load experiment config
 # -----------------------------------------------------------------------------
 exp_cfg <- yaml::read_yaml(exp_yml)
 
 if (is.null(exp_cfg$base_simulation) || !is.list(exp_cfg$base_simulation)) {
   stop(
-    "experiment.yml must define `base_simulation:` as a nested YAML mapping.",
+    "experiment config must define `base_simulation:` as a nested YAML mapping.",
     call. = FALSE
   )
 }
 
 base <- exp_cfg$base_simulation
 
-# Optional experiment metadata
+# Top-level experiment metadata
 exp_meta <- exp_cfg$experiment %||% list()
 exp_name <- exp_meta$name %||% exp_meta$id %||% fs::path_file(exp_dir)
+exp_version <- exp_meta$version
+
+if (is.null(exp_version) || !nzchar(exp_version)) {
+  stop("experiment$version must be defined (e.g., 'exp_v1').", call. = FALSE)
+}
+
+# Experiment block written to each sim yaml — drop name (redundant)
+sim_experiment_block <- exp_meta[setdiff(names(exp_meta), "name")]
+
+# Derive experiment run directory
+exp_rel <- fs::path_rel(exp_dir, start = "config")
+exp_run_dir <- fs::path("experiments", exp_rel, exp_version)
 
 # Design block
 design <- exp_cfg$design
 if (is.null(design) || !is.list(design)) {
-  stop("experiment.yml must define a `design:` block.", call. = FALSE)
+  stop("experiment config must define a `design:` block.", call. = FALSE)
 }
 
 design_type <- design$type %||% "grid"
@@ -195,13 +224,6 @@ if (!is.character(design_type) || length(design_type) != 1L) {
   stop("design$type must be a character scalar.", call. = FALSE)
 }
 
-# Optional simulation-wide controls
-sim_controls <- exp_cfg$simulation
-if (!is.null(sim_controls) && !is.list(sim_controls)) {
-  stop("simulation: (if present) must be a mapping.", call. = FALSE)
-}
-
-# Require override paths to exist (recommended)
 require_existing_paths <- design$require_existing_paths %||% TRUE
 if (
   !is.logical(require_existing_paths) || length(require_existing_paths) != 1L
@@ -209,13 +231,11 @@ if (
   stop("design$require_existing_paths must be TRUE/FALSE.", call. = FALSE)
 }
 
-# -----------------------------------------------------------------------------
-# Seed policy (experiment-wide)
-# -----------------------------------------------------------------------------
-seed_base <- base$experiment$seed_base
+# Experiment-level seed base (in top-level experiment: block)
+seed_base <- exp_meta$seed_base
 if (is.null(seed_base)) {
   stop(
-    "experiment$seed_base must be defined (e.g., 4000).",
+    "experiment$seed_base must be defined in the top-level experiment: block.",
     call. = FALSE
   )
 }
@@ -227,8 +247,15 @@ if (!is.numeric(seed_base) || length(seed_base) != 1L || seed_base < 0) {
 }
 seed_base <- as.integer(seed_base)
 
+# Iterations (from base_simulation)
+iterations <- base$iterations
+if (is.null(iterations) || !is.numeric(iterations) || iterations < 1L) {
+  stop("base_simulation$iterations must be a positive integer.", call. = FALSE)
+}
+iterations <- as.integer(iterations)
+
 # -----------------------------------------------------------------------------
-# Expand design → list of points
+# Expand design
 # -----------------------------------------------------------------------------
 points <- switch(
   tolower(design_type),
@@ -251,32 +278,46 @@ if (!is.logical(overwrite) || length(overwrite) != 1L) {
   stop("design$overwrite must be TRUE/FALSE.", call. = FALSE)
 }
 
-existing <- fs::dir_ls(exp_dir, glob = "sim_*.yml", type = "file", fail = FALSE)
-if (length(existing) > 0L && !overwrite) {
+existing_sim_dirs <- if (fs::dir_exists(exp_run_dir)) {
+  fs::dir_ls(
+    exp_run_dir,
+    type = "directory",
+    regexp = "sim_\\d+$",
+    fail = FALSE
+  )
+} else {
+  character(0)
+}
+
+if (length(existing_sim_dirs) > 0L && !overwrite) {
   stop(
-    "sim_*.yml already exist in ",
-    exp_dir,
+    "sim_* directories already exist in ",
+    exp_run_dir,
     " and design$overwrite is FALSE.",
     call. = FALSE
   )
 }
-if (length(existing) > 0L && overwrite) {
-  fs::file_delete(existing)
+if (length(existing_sim_dirs) > 0L && overwrite) {
+  fs::dir_delete(existing_sim_dirs)
 }
 
 message("▶ Expanding design into ", length(points), " simulation config(s)")
-message("   Experiment: ", exp_name)
+message("   Experiment: ", exp_name, " (", exp_version, ")")
 message("   Design type: ", design_type)
+message("   Output dir:  ", exp_run_dir)
+
+# Keys from base_simulation written as top-level sections after the header blocks
+body_keys <- setdiff(
+  names(base),
+  c("iterations", "experiment", "simulation", "design")
+)
 
 for (i in seq_along(points)) {
+  sim_id <- sprintf(paste0("sim_%0", pad_width, "d"), i)
+  sim_seed_base <- as.integer(seed_base + i * 100000L)
+
+  # Apply design overrides to base
   sim <- base
-
-  # parameter seed → data-generating randomness
-  # execution seed → algorithmic randomness
-  sim_seed <- seed_base + i
-  sim$parameter$seed <- sim_seed
-  sim$execution$seed <- sim_seed + 10000
-
   pt <- points[[i]]
   for (k in names(pt)) {
     sim <- set_by_path(
@@ -287,23 +328,35 @@ for (i in seq_along(points)) {
     )
   }
 
-  sim$design <- list(
-    experiment = exp_name,
+  # Seeds — placed on the sections they belong to
+  sim$parameter$seed <- sim_seed_base # sim-level
+  sim$sampler$seed_base <- sim_seed_base + 10000L # iter-level base
+  sim$data$seed_base <- sim_seed_base + 20000L # iter-level base
+
+  # Build output in desired key order
+  out <- list()
+
+  out$experiment <- sim_experiment_block
+
+  out$simulation <- list(
+    sim_id = sim_id,
+    seed_base = sim_seed_base,
+    iterations = iterations
+  )
+
+  out$design <- list(
     design_type = design_type,
-    sim_index = i,
-    sim_seed = sim_seed,
     overrides = lapply(pt, normalize_scalar)
   )
 
-  if (!is.null(sim_controls)) {
-    sim$simulation <- sim_controls
+  for (k in body_keys) {
+    out[[k]] <- sim[[k]]
   }
 
-  sim_id <- sprintf(paste0("sim_%0", pad_width, "d"), i)
-  sim$simulation$sim_id <- sim_id
-
-  out_path <- fs::path(exp_dir, paste0(sim_id, ".yml"))
-  yaml::write_yaml(sim, out_path)
+  # Write
+  sim_out_dir <- fs::path(exp_run_dir, sim_id)
+  fs::dir_create(sim_out_dir, recurse = TRUE)
+  yaml::write_yaml(out, fs::path(sim_out_dir, paste0(sim_id, ".yml")))
 }
 
-message("✔ Done. Wrote sim_*.yml files to: ", exp_dir)
+message("✔ Done. Wrote sim configs to: ", exp_run_dir)

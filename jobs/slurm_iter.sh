@@ -9,8 +9,8 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=64G
-#SBATCH --output=/dev/null
-#SBATCH --error=/dev/null
+# NOTE: --output and --error are passed as CLI overrides from submit_exp.sh
+#       so that logs land in the correct simulation directory.
 
 set -euo pipefail
 
@@ -18,10 +18,11 @@ set -euo pipefail
 # slurm_iter.sh
 #
 # Contract:
-#   • Called by submit_exp.sh
+#   • Called by submit_exp.sh via sbatch --array
 #   • Runs ONE iteration of ONE simulation
 #   • Declares execution mode = slurm
 #   • Delegates all iteration logic to run_iter.R
+#   • Output is captured by SLURM via --output override
 # ============================================================
 
 # ===============================
@@ -72,32 +73,13 @@ cd "$PROJECT_ROOT" || {
 export LIKELYR_EXEC_MODE=slurm
 
 # ===============================
-# Iteration bookkeeping (logging only)
+# Iteration identifiers (logging only)
 # ===============================
 ITER_INDEX=$((SLURM_ARRAY_TASK_ID + 1))
 ITER_ID=$(printf "iter_%04d" "$ITER_INDEX")
 
 SIM_DIR="$(dirname "$SIM_YML")"
 SIM_ID="$(basename "$SIM_DIR")"
-
-LOG_DIR="${SIM_DIR}/iterations/${ITER_ID}/logs"
-mkdir -p "$LOG_DIR"
-
-LOG_FILE="${LOG_DIR}/slurm.out"
-
-# Redirect all output
-exec > "$LOG_FILE" 2>&1
-
-# ===============================
-# Begin logged output
-# ===============================
-echo "🚀 Starting iteration"
-echo "📁 PROJECT_ROOT: ${PROJECT_ROOT}"
-echo "🧩 Simulation: ${SIM_ID}"
-echo "🔁 Iteration: ${ITER_ID}"
-echo "🧠 Cores allocated: ${SLURM_CPUS_PER_TASK}"
-echo "🧪 Simulation config: ${SIM_YML}"
-echo "🕒 Start time: $(date)"
 
 # ===============================
 # Validate shared simulation model
@@ -109,6 +91,17 @@ if [[ ! -f "$MODEL_PATH" ]]; then
   echo "    $MODEL_PATH"
   exit 1
 fi
+
+# ===============================
+# Begin logged output
+# ===============================
+echo "🚀 Starting iteration"
+echo "📁 PROJECT_ROOT:    ${PROJECT_ROOT}"
+echo "🧩 Simulation:      ${SIM_ID}"
+echo "🔁 Iteration:       ${ITER_ID}"
+echo "🧠 Cores allocated: ${SLURM_CPUS_PER_TASK}"
+echo "🕒 Start time:      $(date)"
+echo ""
 
 # ===============================
 # Run iteration engine
@@ -124,5 +117,6 @@ Rscript --max-connections=256 \
   "$RSCRIPT_PATH" \
   "$SIM_YML"
 
+echo ""
 echo "✅ Iteration complete: ${SIM_ID} / ${ITER_ID}"
 echo "🕒 End time: $(date)"

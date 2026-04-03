@@ -27,11 +27,8 @@ theta_to_eta <- function(theta) {
 # ----------------------------------------------------------------------
 
 generate_eta_0 <- function(param_cfg) {
-  J <- param_cfg$J
-
-  if (J < 2) {
-    stop("J must be at least 2.", call. = FALSE)
-  }
+  param_dim <- param_cfg$param_dim
+  J <- param_dim + 1
 
   # ------------------------------------------------------------
   # Determine Simpson index target
@@ -116,6 +113,30 @@ generate_eta_0 <- function(param_cfg) {
 }
 
 # ----------------------------------------------------------------------
+# Closed-form MLE in η-space
+# θ̂_j = n_j / N
+# η̂_j = log(θ̂_j / θ̂_J)
+# ----------------------------------------------------------------------
+
+eta_mle_fn <- function(data) {
+  delta <- 1e-8
+
+  counts <- data$count
+
+  J <- length(counts)
+
+  smoothed_counts <- counts + delta
+
+  theta_hat <- smoothed_counts / sum(smoothed_counts)
+
+  eta_hat <- theta_to_eta(theta_hat)
+
+  names(eta_hat) <- paste0("eta_", seq_len(J - 1))
+
+  eta_hat
+}
+
+# ----------------------------------------------------------------------
 # Parameter Spec Constructor
 # ----------------------------------------------------------------------
 
@@ -131,10 +152,11 @@ make_parameter <- function(config) {
   eta_0 <- generate_eta_0(param_cfg)
 
   parameter_spec(
-    name = "Multinomial logits (baseline parameterization)",
+    name = "Multinomial logits",
+    param_mle_fn = eta_mle_fn,
     param_0 = eta_0,
-    param_lower = rep(-Inf, length(eta_0)),
-    param_upper = rep(Inf, length(eta_0)),
+    param_lower = "auto",
+    param_upper = "auto",
     eq = NULL,
     eq_jac = NULL
   )

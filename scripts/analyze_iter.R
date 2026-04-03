@@ -1,95 +1,185 @@
 #!/usr/bin/env Rscript
 
 # ============================================================
-# analyze_test_iter.R
+# analyze_iter.R  (batch/programmatic version)
 #
-# Purpose:
-#   • Load a single local test iteration artifact
-#   • Intended for interactive / exploratory use
-#   • No CLI — user edits paths below
+# Contract:
+#   • Accepts <path/to/sim_XX/> as CLI argument
+#   • Loops over all iterations/iter_XXXX/ directories
+#   • Loads each model.rds, runs infer() and compare()
+#   • Extracts point and interval estimate metrics
+#   • Saves combined metrics to sim_dir/analysis/
 #
-# Expects:
-#   experiments/<exp>/<sim>/test_runs/test_XXXX/model.rds
+# Output:
+#   <sim_dir>/analysis/metrics_point_iteration.rds
+#   <sim_dir>/analysis/metrics_interval_iteration.rds
+#
+# Skips iterations missing model.rds (failed or incomplete).
 # ============================================================
 
 suppressPackageStartupMessages({
   library(likelyr)
   library(here)
   library(fs)
+  library(yaml)
+  library(dplyr)
+  library(purrr)
 })
 
 # ============================================================
-# USER INPUT (edit these)
+# Parse CLI arguments
 # ============================================================
+args <- commandArgs(trailingOnly = TRUE)
 
-# Path to simulation.yml (authoritative)
-sim_config_path <- "experiments/multinom/baseline_logit/sim_01/simulation.yml"
-
-# Iteration index (default = 1)
-iter_index <- 2L
-
-# ============================================================
-# Validate inputs
-# ============================================================
-
-sim_yml <- path_abs(sim_config_path)
-
-if (!file_exists(sim_yml)) {
-  stop("simulation.yml not found: ", sim_yml, call. = FALSE)
-}
-
-if (!is.numeric(iter_index) || length(iter_index) != 1L || iter_index < 1L) {
-  stop("iter_index must be a positive integer.", call. = FALSE)
-}
-
-# ============================================================
-# Resolve project root
-# ============================================================
-
-root <- here()
-
-# ============================================================
-# Resolve test iteration directory
-# ============================================================
-
-sim_dir <- path_dir(sim_yml)
-sim_id <- path_file(sim_dir)
-
-iter_id <- sprintf("iter_%04d", iter_index)
-iter_dir <- path(sim_dir, "iterations", iter_id)
-
-if (!dir_exists(iter_dir)) {
-  stop("Iteration directory not found: ", iter_dir, call. = FALSE)
-}
-
-# ============================================================
-# Load model artifact
-# ============================================================
-
-model_path <- path(iter_dir, "model.rds")
-
-if (!file_exists(model_path)) {
+if (length(args) != 1L) {
   stop(
-    "model.rds not found in test iteration directory: ",
-    model_path,
+    "Usage: Rscript scripts/analyze_iter.R <path/to/sim_dir>",
     call. = FALSE
   )
 }
 
-model <- readRDS(model_path)
+sim_dir <- path_abs(args[[1]])
 
-model <- model |>
-  infer() |>
-  compare()
+if (!dir_exists(sim_dir)) {
+  stop("Simulation directory not found: ", sim_dir, call. = FALSE)
+}
 
-model$workspace$integrate |> plot()
-model$workspace$profile |> plot()
+sim_id <- path_file(sim_dir)
+iter_dir <- path(sim_dir, "iterations")
+analysis_dir <- path(sim_dir, "analysis")
 
-model$workspace$integrate$inference |> plot()
-model$workspace$profile$inference |> plot()
+dir_create(analysis_dir, recurse = TRUE)
 
-model$workspace$comparison |> plot()
+if (!dir_exists(iter_dir)) {
+  stop("No iterations directory found in: ", sim_dir, call. = FALSE)
+}
 
-model$workspace$comparison |> view()
+# ============================================================
+# Discover completed iterations
+# ============================================================
+iter_dirs <- dir_ls(iter_dir, type = "directory", regexp = "iter_\\d+$")
 
-model$data
+if (length(iter_dirs) == 0L) {
+  stop("No iter_* directories found in: ", iter_dir, call. = FALSE)
+}
+
+model_paths <- path(iter_dirs, "model.rds")
+complete <- file_exists(model_paths)
+
+n_total <- length(iter_dirs)
+n_complete <- sum(complete)
+
+message("▶ ", sim_id, ": ", n_complete, "/", n_total, " iterations complete")
+
+if (n_complete == 0L) {
+  stop("No completed iterations found.", call. = FALSE)
+}
+
+# ============================================================
+# Extract metrics from each completed iteration
+# ============================================================
+extract_metrics <- function(model_path, iter_index) {
+  model <- tryCatch(readRDS(model_path), error = function(e) NULL)
+  if (is.null(model)) {
+    message("  ⚠ Could not load: ", model_path)
+    return(NULL)
+  }
+
+  model <- tryCatch(
+    model |> infer() |> compare(),
+    error = function(e) {
+      message(
+        "  ⚠ infer()/compare() failed for iter ",
+        iter_index,
+        ": ",
+        e$message
+      )
+      NULL
+    }
+  )
+  if (is.null(model)) {
+    return(NULL)
+  }
+
+  # ------------------------------------------------------------------
+  # Point estimates
+  # ------------------------------------------------------------------
+  point_rows <- list()
+
+  for (pl in c("profile", "integrated")) {
+    res <- model$workspace[[pl]]
+    if (is.null(res) || is.null(res$inference)) {
+      next
+    }
+    df <- res$inference$point_estimate_df
+    if (is.null(df)) {
+      next
+    }
+    point_rows[[pl]] <- df |>
+      mutate(
+        iter_index = iter_index,
+        pseudolikelihood = pl,
+        .before = everything()
+      )
+  }
+
+  point_df <- if (length(point_rows) > 0) bind_rows(point_rows) else NULL
+
+  # ------------------------------------------------------------------
+  # Interval estimates
+  # ------------------------------------------------------------------
+  interval_rows <- list()
+
+  for (pl in c("profile", "integrated")) {
+    res <- model$workspace[[pl]]
+    if (is.null(res) || is.null(res$inference)) {
+      next
+    }
+    df <- res$inference$interval_estimate_df
+    if (is.null(df)) {
+      next
+    }
+    interval_rows[[pl]] <- df |>
+      mutate(
+        iter_index = iter_index,
+        pseudolikelihood = pl,
+        .before = everything()
+      )
+  }
+
+  interval_df <- if (length(interval_rows) > 0) {
+    bind_rows(interval_rows)
+  } else {
+    NULL
+  }
+
+  list(point = point_df, interval = interval_df)
+}
+
+results <- map2(
+  model_paths[complete],
+  which(complete),
+  extract_metrics
+)
+
+results <- Filter(Negate(is.null), results)
+
+if (length(results) == 0L) {
+  stop("No metrics could be extracted from any iteration.", call. = FALSE)
+}
+
+# ============================================================
+# Combine and save
+# ============================================================
+point_df <- bind_rows(map(results, "point"))
+interval_df <- bind_rows(map(results, "interval"))
+
+saveRDS(point_df, path(analysis_dir, "metrics_point_iteration.rds"))
+saveRDS(interval_df, path(analysis_dir, "metrics_interval_iteration.rds"))
+
+message(
+  "✔ Saved metrics for ",
+  nrow(point_df) / n_distinct(point_df$pseudolikelihood),
+  " iterations to ",
+  analysis_dir
+)

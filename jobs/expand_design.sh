@@ -5,10 +5,11 @@ set -euo pipefail
 # expand_design.sh
 #
 # Contract:
-#   • Accepts <path/to/experiment.yml>
+#   • Accepts <path/to/exp_vX.yml> (from config/)
 #   • Runs expand_design.R
-#   • Verifies sim_*.yml files were created
+#   • Verifies sim_* directories were created in experiments/
 #   • Does NOT inspect or re-derive design logic
+#   • Config directory is never written to
 # ============================================================
 
 # ===============================
@@ -29,14 +30,14 @@ export MKL_NUM_THREADS=1
 # ===============================
 if [[ $# -ne 1 ]]; then
   echo "❌ ERROR: Missing arguments."
-  echo "Usage: $0 <path/to/experiment.yml>"
+  echo "Usage: $0 <path/to/exp_vX.yml>"
   exit 1
 fi
 
 EXP_YML="$1"
 
 if [[ ! -f "$EXP_YML" ]]; then
-  echo "❌ ERROR: experiment.yml not found:"
+  echo "❌ ERROR: Experiment config not found:"
   echo "    $EXP_YML"
   exit 1
 fi
@@ -51,20 +52,29 @@ echo "📁 PROJECT_ROOT resolved to: $PROJECT_ROOT"
 echo "🧪 Using experiment config: $EXP_YML"
 
 # ===============================
-# Resolve config directory
+# Resolve config directory and experiment path
 # ===============================
 EXP_CFG_DIR="$(dirname "$EXP_YML")"
-
-# Must live under config/
 EXPERIMENT_REL="$(realpath --relative-to=config "$EXP_CFG_DIR")"
 
 if [[ -z "$EXPERIMENT_REL" || "$EXPERIMENT_REL" == "." ]]; then
-  echo "❌ ERROR: experiment.yml must live under config/<experiment>/"
+  echo "❌ ERROR: experiment config must live under config/<path>/"
   exit 1
 fi
 
 echo "🧪 Experiment: ${EXPERIMENT_REL}"
 echo "📂 Config directory: ${EXP_CFG_DIR}"
+
+# ===============================
+# Read version directly from YAML via grep
+# Avoids a second Rscript call after the main one
+# ===============================
+EXP_VERSION="$(grep -m1 '^\s*version:' "$EXP_YML" | sed 's/.*version:\s*//' | tr -d '[:space:]"' )"
+
+if [[ -z "$EXP_VERSION" ]]; then
+  echo "❌ ERROR: experiment\$version missing or unparseable in $EXP_YML"
+  exit 1
+fi
 
 # ===============================
 # Run R-side generation
@@ -80,14 +90,17 @@ Rscript "$RSCRIPT_PATH" "$EXP_YML"
 
 # ===============================
 # Validate output
+# Sim dirs are written to experiments/<path>/<version>/sim_*/
 # ===============================
-SIM_CONFIGS=( "${EXP_CFG_DIR}"/sim_*.yml )
+EXP_RUN_DIR="experiments/${EXPERIMENT_REL}/${EXP_VERSION}"
+SIM_DIRS=( "$EXP_RUN_DIR"/sim_*/ )
 
-if [[ ! -e "${SIM_CONFIGS[0]}" ]]; then
-  echo "❌ ERROR: expand_design.R produced no sim_*.yml files"
+if [[ ! -d "${SIM_DIRS[0]}" ]]; then
+  echo "❌ ERROR: expand_design.R produced no sim_* directories in:"
+  echo "    $EXP_RUN_DIR"
   echo "Check the design block in:"
   echo "  $EXP_YML"
   exit 1
 fi
 
-echo "✔ Generated ${#SIM_CONFIGS[@]} simulation config(s)"
+echo "✔ Generated ${#SIM_DIRS[@]} simulation config(s) in: ${EXP_RUN_DIR}"

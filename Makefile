@@ -12,11 +12,11 @@ endif
 # -------------------------------------------------
 # Paths
 # -------------------------------------------------
-ROOT := $(shell pwd)
-CONFIG_DIR := config
+ROOT            := $(shell pwd)
+CONFIG_DIR      := config
 EXPERIMENTS_DIR := experiments
-SCRIPTS_DIR := scripts
-JOBS_DIR := jobs
+SCRIPTS_DIR     := scripts
+JOBS_DIR        := jobs
 
 # -------------------------------------------------
 # Phony targets
@@ -29,7 +29,7 @@ JOBS_DIR := jobs
 help:
 	@echo ""
 	@echo "Experiment workflow (config-driven):"
-	@echo "  make experiment EXP_CONFIG=<path/to/experiment.yml>"
+	@echo "  make experiment EXP_CONFIG=<path/to/exp_vX.yml>"
 	@echo ""
 	@echo "Individual steps:"
 	@echo "  make gen        EXP_CONFIG=..."
@@ -39,6 +39,7 @@ help:
 	@echo ""
 	@echo "Local testing:"
 	@echo "  make test-iter  SIM_CONFIG=... [ITER=1]"
+	@echo "  Note: make setup must be run first to build model specs."
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make dry-run    EXP_CONFIG=..."
@@ -51,7 +52,7 @@ help:
 # -------------------------------------------------
 gen:
 ifndef EXP_CONFIG
-	$(error EXP_CONFIG must be set, e.g. EXP_CONFIG=config/multinom/baseline_logit/experiment.yml)
+	$(error EXP_CONFIG must be set, e.g. EXP_CONFIG=config/multinom/logit_simpson/exp_v1.yml)
 endif
 	@echo "▶ Expanding experiment design"
 	bash $(JOBS_DIR)/expand_design.sh $(EXP_CONFIG)
@@ -59,7 +60,11 @@ endif
 # -------------------------------------------------
 # Materialize experiment + simulations
 # -------------------------------------------------
-setup: gen
+setup:
+ifndef EXP_CONFIG
+	$(error EXP_CONFIG must be set, e.g. EXP_CONFIG=config/multinom/logit_simpson/exp_v1.yml)
+endif
+	@$(MAKE) gen EXP_CONFIG=$(EXP_CONFIG)
 	@echo "▶ Initializing experiment and simulations"
 	bash $(JOBS_DIR)/init_exp.sh $(EXP_CONFIG)
 
@@ -68,69 +73,68 @@ setup: gen
 # -------------------------------------------------
 submit:
 ifndef EXP_CONFIG
-	$(error EXP_CONFIG must be set, e.g. EXP_CONFIG=config/multinom/baseline_logit/experiment.yml)
+	$(error EXP_CONFIG must be set, e.g. EXP_CONFIG=config/multinom/logit_simpson/exp_v1.yml)
 endif
 	@echo "▶ Submitting experiment to Slurm"
-	@EXP_CFG_DIR=$(patsubst %/,%,$(dir $(EXP_CONFIG))); \
-	EXP_REL=$$(realpath --relative-to=$(CONFIG_DIR) $$EXP_CFG_DIR); \
-	EXP_RUN_DIR=$(EXPERIMENTS_DIR)/$$EXP_REL; \
-	bash $(JOBS_DIR)/submit_exp.sh $$EXP_RUN_DIR/experiment.yml
+	bash $(JOBS_DIR)/submit_exp.sh $(EXP_CONFIG)
 
 # -------------------------------------------------
-# Full experiment
+# Full experiment (setup + submit)
 # -------------------------------------------------
-experiment: setup submit
+experiment:
+ifndef EXP_CONFIG
+	$(error EXP_CONFIG must be set, e.g. EXP_CONFIG=config/multinom/logit_simpson/exp_v1.yml)
+endif
+	@$(MAKE) setup EXP_CONFIG=$(EXP_CONFIG)
+	@$(MAKE) submit EXP_CONFIG=$(EXP_CONFIG)
 	@echo "✔ Experiment launched from $(EXP_CONFIG)"
 
 # -------------------------------------------------
 # Analyze experiment
 # -------------------------------------------------
 analyze:
+ifndef EXP_CONFIG
+	$(error EXP_CONFIG must be set, e.g. EXP_CONFIG=config/multinom/logit_simpson/exp_v1.yml)
+endif
 	@echo "▶ Analyzing simulations"
-	./jobs/analyze_all_sims.sh $(EXP_DIR)
-
+	bash $(JOBS_DIR)/analyze_all_sims.sh $(EXP_CONFIG)
 
 # -------------------------------------------------
-# Test single iteration locally (no Slurm)
+# Test single iteration locally (slurm-emulation mode)
+# Saves to <sim>/iterations/iter_XXXX/model.rds so that
+# analyze_sim.R can be run on models without any changes.
+# Requires: make setup must have been run first.
 # -------------------------------------------------
 test-iter:
 ifndef SIM_CONFIG
-	$(error SIM_CONFIG must be set, e.g. SIM_CONFIG=experiments/<exp>/<sim>/simulation.yml)
+	$(error SIM_CONFIG must be set, e.g. SIM_CONFIG=experiments/<path>/<version>/<sim>/<sim>.yml)
 endif
 	@echo "▶ Running local test iteration"
 	@ITER_INDEX=$(or $(ITER),1); \
 	echo "  • simulation: $(SIM_CONFIG)"; \
 	echo "  • iteration:  $$ITER_INDEX"; \
-	bash $(JOBS_DIR)/test_iter.sh $(SIM_CONFIG) $$ITER_INDEX
+	Rscript $(SCRIPTS_DIR)/test_iter.R $(SIM_CONFIG) $$ITER_INDEX
 
 # -------------------------------------------------
 # Dry run (no side effects, predictive)
 # -------------------------------------------------
 dry-run:
 ifndef EXP_CONFIG
-	$(error EXP_CONFIG must be set, e.g. EXP_CONFIG=config/multinom/baseline_logit/experiment.yml)
+	$(error EXP_CONFIG must be set, e.g. EXP_CONFIG=config/multinom/logit_simpson/exp_v1.yml)
 endif
-	@EXP_CFG_DIR=$(patsubst %/,%,$(dir $(EXP_CONFIG))); \
-	EXP_REL=$$(realpath --relative-to=$(CONFIG_DIR) $$EXP_CFG_DIR); \
-	EXP_RUN_DIR=$(EXPERIMENTS_DIR)/$$EXP_REL; \
-	echo "▶ DRY RUN"; \
-	echo ""; \
-	echo "Experiment config:"; \
-	echo "  $(EXP_CONFIG)"; \
-	echo ""; \
-	echo "Would expand design:"; \
-	echo "  bash $(JOBS_DIR)/expand_design.sh $(EXP_CONFIG)"; \
-	echo ""; \
-	echo "Would initialize experiment:"; \
-	echo "  bash $(JOBS_DIR)/init_exp.sh $(EXP_CONFIG)"; \
-	echo ""; \
-	echo "Would submit Slurm jobs:"; \
-	echo "  bash $(JOBS_DIR)/submit_exp.sh $$EXP_RUN_DIR/experiment.yml"; \
-	echo ""; \
-	echo "Local iteration test:"; \
-	echo "  make test-iter SIM_CONFIG=experiments/<exp>/<sim>/simulation.yml [ITER=1]"; \
-	echo ""; \
-	echo "✔ Dry run complete"
+	@echo "▶ DRY RUN"
+	@echo ""
+	@echo "Experiment config: $(EXP_CONFIG)"
+	@echo ""
+	@echo "Steps that would run:"
+	@echo "  1. bash $(JOBS_DIR)/expand_design.sh $(EXP_CONFIG)"
+	@echo "  2. bash $(JOBS_DIR)/init_exp.sh $(EXP_CONFIG)"
+	@echo "  3. bash $(JOBS_DIR)/submit_exp.sh $(EXP_CONFIG)"
+	@echo ""
+	@echo "To test a single iteration after setup:"
+	@echo "  make test-iter SIM_CONFIG=experiments/<path>/<version>/<sim>/<sim>.yml [ITER=1]"
+	@echo ""
+	@echo "✔ Dry run complete"
 
 # -------------------------------------------------
 # Slurm queue

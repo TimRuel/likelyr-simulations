@@ -11,6 +11,7 @@ set -euo pipefail
 #       <path/to/simulation.yml> [iter_index]
 #   • Declares execution mode = test
 #   • Delegates execution to run_iter.R
+#   • Logs to experiments/<sim>/test_runs/test_XXXX/logs/
 #
 # Usage:
 #   bash jobs/test_iter.sh experiments/<exp>/<sim>/simulation.yml [iter_index]
@@ -62,19 +63,35 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 # ===============================
+# Resolve log path
+# ===============================
+SIM_DIR="$(dirname "$SIM_YML")"
+ITER_ID=$(printf "test_%04d" "$ITER_INDEX")
+LOG_DIR="${SIM_DIR}/test_runs/${ITER_ID}/logs"
+LOG_FILE="${LOG_DIR}/test.out"
+
+mkdir -p "$LOG_DIR"
+
+# ===============================
 # Declare TEST execution mode
 # ===============================
 export LIKELYR_EXEC_MODE=test
 export LIKELYR_TEST_ITER="$ITER_INDEX"
 
 # ===============================
-# Run test iteration
+# Run test iteration (tee to console + log file)
 # ===============================
-echo "🧪 Local test iteration"
-echo "📁 PROJECT_ROOT: ${PROJECT_ROOT}"
-echo "🧩 Simulation:  ${SIM_YML}"
-echo "🔁 Iteration:   test_$(printf "%04d" "$ITER_INDEX")"
+{
+  echo "🧪 Local test iteration"
+  echo "📁 PROJECT_ROOT: ${PROJECT_ROOT}"
+  echo "🧩 Simulation:   ${SIM_YML}"
+  echo "🔁 Iteration:    ${ITER_ID}"
+  echo "🕒 Start time:   $(date)"
+  echo ""
 
-Rscript scripts/run_iter.R "$SIM_YML"
+  Rscript scripts/run_iter.R "$SIM_YML"
 
-echo "✅ Local test iteration complete"
+  echo ""
+  echo "✅ Local test iteration complete"
+  echo "🕒 End time: $(date)"
+} 2>&1 | tee "$LOG_FILE"

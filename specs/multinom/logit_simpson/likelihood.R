@@ -46,6 +46,28 @@ eta_mle_fn <- function(data) {
 }
 
 # ----------------------------------------------------------------------
+# Expected log-likelihood
+# ----------------------------------------------------------------------
+
+E_loglik <- function(param, omega_hat, data = NULL) {
+  p_omega <- softmax_from_eta(omega_hat)
+  z <- c(param, 0)
+  z <- z - max(z)
+  log_sum_exp <- log(sum(exp(z)))
+  sum(p_omega * (z - log_sum_exp))
+}
+
+# ----------------------------------------------------------------------
+# Gradient wrt η
+# ----------------------------------------------------------------------
+
+E_loglik_grad <- function(param, omega_hat, data = NULL) {
+  p_omega <- softmax_from_eta(omega_hat)
+  p_eta <- softmax_from_eta(param)
+  p_omega[-length(p_omega)] - p_eta[-length(p_eta)]
+}
+
+# ----------------------------------------------------------------------
 # Likelihood Spec Constructor
 # ----------------------------------------------------------------------
 
@@ -59,6 +81,7 @@ make_likelihood <- function(config) {
   likelihood_spec(
     name = cfg$name %||% "Multinomial likelihood (logit parameterization)",
     loglik = loglik,
-    param_mle_fn = eta_mle_fn
+    E_loglik = E_loglik,
+    E_loglik_grad = E_loglik_grad
   )
 }

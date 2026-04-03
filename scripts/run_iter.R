@@ -8,9 +8,25 @@
 #   • Execution mode determined by env var:
 #       LIKELYR_EXEC_MODE = "slurm" | "test"
 #   • Input:
-#       - <path/to/simulation.yml>
+#       - <path/to/sim_XX/sim_XX.yml>
 #       - SLURM_ARRAY_TASK_ID   (slurm mode)
 #       - LIKELYR_TEST_ITER     (test mode, optional)
+#   • Output:
+#       - <iter_dir>/model.rds        (success)
+#       - <iter_dir>/error.rds        (failure)
+#
+# Environment variables:
+#   LIKELYR_EXEC_MODE   "slurm" | "test"       (default: "slurm")
+#   LIKELYR_VERBOSE     "TRUE"  | "FALSE"       (default: "TRUE")
+#   LIKELYR_SIM_DIR     override sim directory  (optional; used by test_iter.R
+#                       to redirect output to a test_sim_* directory)
+#
+# Seed hierarchy:
+#   experiment.seed_base                              — exp-level anchor
+#   simulation.seed_base = exp_seed_base + i*100000  — sim-level space
+#   parameter.seed       = sim_seed_base             — sim-level (setup time)
+#   data.seed_base       = sim_seed_base             — iter: + iter_index
+#   sampler.seed_base    = sim_seed_base + 10000     — iter: + iter_index
 # ============================================================
 
 suppressPackageStartupMessages({
@@ -28,7 +44,7 @@ args <- commandArgs(trailingOnly = TRUE)
 
 if (length(args) != 1L) {
   stop(
-    "Usage: Rscript run_iter.R <path/to/simulation.yml>",
+    "Usage: Rscript run_iter.R <path/to/sim_XX/sim_XX.yml>",
     call. = FALSE
   )
 }
@@ -36,7 +52,7 @@ if (length(args) != 1L) {
 sim_yml <- path_abs(args[[1]])
 
 if (!file_exists(sim_yml)) {
-  stop("simulation.yml not found: ", sim_yml, call. = FALSE)
+  stop("sim yaml not found: ", sim_yml, call. = FALSE)
 }
 
 # ============================================================
@@ -51,14 +67,22 @@ source(
 
 # ============================================================
 # Resolve simulation context
+# LIKELYR_SIM_DIR allows test_iter.R to redirect output to a
+# test_sim_* directory while still reading the original sim config.
 # ============================================================
-sim_dir <- path_dir(sim_yml)
+sim_dir_override <- Sys.getenv("LIKELYR_SIM_DIR", "")
+sim_dir <- if (nzchar(sim_dir_override)) {
+  path_abs(sim_dir_override)
+} else {
+  path_dir(sim_yml)
+}
 sim_id <- path_file(sim_dir)
 
 # ============================================================
-# Determine execution mode
+# Execution configuration
 # ============================================================
 exec_mode <- Sys.getenv("LIKELYR_EXEC_MODE", "slurm")
+verbose <- isTRUE(as.logical(Sys.getenv("LIKELYR_VERBOSE", "TRUE")))
 
 if (!exec_mode %in% c("slurm", "test")) {
   stop("Invalid LIKELYR_EXEC_MODE: ", exec_mode, call. = FALSE)
@@ -92,14 +116,16 @@ message("🚀 Starting iteration")
 message("  Mode:        ", exec_mode)
 message("  Simulation:  ", sim_id)
 message("  Iteration:   ", iter_id)
+message("  Verbose:     ", verbose)
 
 # ============================================================
-# Load simulation config snapshot
+# Load simulation config
 # ============================================================
 config <- read_yaml(sim_yml)
 
 # ============================================================
 # Load shared model skeleton
+# (true parameter already baked in from build_model_spec.R)
 # ============================================================
 model_path <- path(sim_dir, "model", "model.rds")
 
@@ -110,60 +136,33 @@ if (!file_exists(model_path)) {
 model <- readRDS(model_path)
 
 # ============================================================
-# Seeding (iteration-specific)
+# Seeding
+#   data.seed_base and sampler.seed_base are stored in the sim
+#   yaml and derived from simulation.seed_base at expand time.
+#   Final iter-level seeds are seed_base + iter_index.
 # ============================================================
-if (!is.null(config$execution$seed)) {
-  set.seed(config$execution$seed + iter_index)
-} else {
-  set.seed(100000 + iter_index)
-}
+data_seed <- as.integer(config$data$seed_base) + iter_index
+sampler_seed <- as.integer(config$sampler$seed_base) + iter_index
 
 # ============================================================
-# Load data generation spec
+# Generate iteration data (data seed)
 # ============================================================
-spec_path <- config$experiment$spec_path
+set.seed(data_seed)
 
-if (is.null(spec_path)) {
-  stop("experiment$spec_path must be defined.", call. = FALSE)
-}
+spec_dir <- path(root, config$experiment$spec_path)
+data_spec_env <- load_data_env(spec_dir)
 
-spec_dir <- path(root, spec_path)
-
-if (!dir_exists(spec_dir)) {
-  stop("Spec directory not found: ", spec_dir, call. = FALSE)
-}
-
-spec_env <- load_spec_env(spec_dir)
-
-data_spec_file <- path(spec_dir, "data.R")
-if (!file_exists(data_spec_file)) {
-  stop("data.R not found in spec directory: ", data_spec_file, call. = FALSE)
-}
-
-source(data_spec_file, local = spec_env)
-
-if (!exists("generate_data", envir = spec_env, inherits = FALSE)) {
-  stop("data.R must define generate_data(config, parameter).", call. = FALSE)
-}
-
-data <- spec_env$generate_data(
+data <- data_spec_env$generate_data(
   config = config,
   parameter = model$parameter
 )
 
 # ============================================================
-# Calibrate model
+# Parallel execution setup
 # ============================================================
-model <- calibrate(model, data)
-
-# ============================================================
-# Parallel execution (if requested)
-# ============================================================
-available_cpus <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", "1"))
-available_cpus <- max(1L, available_cpus)
-
+available_cpus <- max(1L, as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", "1")))
 exec <- model$execution
-use_parallel <- exec$mode == "parallel"
+use_parallel <- isTRUE(exec$mode == "parallel")
 
 if (use_parallel) {
   requested_workers <- as.integer(exec$num_workers)
@@ -184,34 +183,46 @@ if (use_parallel) {
   }
 
   plan(multisession, workers = requested_workers)
+  on.exit(plan(sequential), add = TRUE)
 }
 
 # ============================================================
-# Inference + runtimes
+# Calibrate, preprocess, integrate (sampler seed)
 # ============================================================
-t_integrate <- system.time({
-  model <- integrate(model)
-})["elapsed"]
+set.seed(sampler_seed)
 
-plan(sequential)
-
-t_profile <- system.time({
-  model <- profile(model)
-})["elapsed"]
-
-runtime <- data.frame(
-  pseudolikelihood = c("Integrated", "Profile"),
-  runtime_sec = c(
-    as.numeric(t_integrate),
-    as.numeric(t_profile)
-  ),
-  stringsAsFactors = FALSE
+model <- tryCatch(
+  {
+    model |>
+      calibrate(data) |>
+      preprocess(verbose = verbose) |>
+      integrate(verbose = verbose)
+  },
+  error = function(e) e
 )
 
 # ============================================================
-# Save iteration artifacts
+# Save model or error record
 # ============================================================
-saveRDS(runtime, path(iter_dir, "runtime.rds"))
-saveRDS(model, path(iter_dir, "model.rds"))
+if (inherits(model, "error")) {
+  error_record <- list(
+    sim_id = sim_id,
+    iter_id = iter_id,
+    iter_index = iter_index,
+    data_seed = data_seed,
+    sampler_seed = sampler_seed,
+    message = conditionMessage(model),
+    call = deparse(conditionCall(model))
+  )
+  error_path <- path(iter_dir, "error.rds")
+  saveRDS(error_record, error_path)
+  message("❌ Iteration failed: ", conditionMessage(model))
+  message("   Error record saved: ", error_path)
+  quit(status = 1L, save = "no")
+}
+
+model_out_path <- path(iter_dir, "model.rds")
+saveRDS(model, model_out_path)
+message("💾 Model saved: ", model_out_path)
 
 message("✅ Iteration complete: ", sim_id, " / ", iter_id)

@@ -97,8 +97,9 @@ required_files <- c(
   "parameter.R",
   "likelihood.R",
   "estimand.R",
-  "nuisance.R",
-  "optimizer.R",
+  "sampler.R",
+  "traversal.R",
+  "solver.R",
   "execution.R"
 )
 
@@ -119,13 +120,6 @@ if (length(missing_files)) {
 # ============================================================
 spec_env <- load_spec_env(spec_dir)
 
-source(path(spec_dir, "parameter.R"), local = spec_env)
-source(path(spec_dir, "likelihood.R"), local = spec_env)
-source(path(spec_dir, "estimand.R"), local = spec_env)
-source(path(spec_dir, "nuisance.R"), local = spec_env)
-source(path(spec_dir, "optimizer.R"), local = spec_env)
-source(path(spec_dir, "execution.R"), local = spec_env)
-
 # ============================================================
 # 8. Validate required factory functions
 # ============================================================
@@ -133,8 +127,9 @@ required_fns <- c(
   "make_parameter",
   "make_likelihood",
   "make_estimand",
-  "make_nuisance",
-  "make_optimizer",
+  "make_sampler",
+  "make_traversal",
+  "make_solver",
   "make_execution"
 )
 
@@ -162,8 +157,9 @@ if (length(missing_fns)) {
 parameter <- spec_env$make_parameter(config)
 likelihood <- spec_env$make_likelihood(config)
 estimand <- spec_env$make_estimand(config)
-nuisance <- spec_env$make_nuisance(config)
-optimizer <- spec_env$make_optimizer(config)
+sampler <- spec_env$make_sampler(config)
+traversal <- spec_env$make_traversal(config)
+solver <- spec_env$make_solver(config)
 execution <- spec_env$make_execution(config)
 
 # ============================================================
@@ -180,8 +176,9 @@ model <- model_spec(
   add(parameter) |>
   add(likelihood) |>
   add(estimand) |>
-  add(nuisance) |>
-  add(optimizer) |>
+  add(sampler) |>
+  add(traversal) |>
+  add(solver) |>
   add(execution)
 
 # ============================================================
