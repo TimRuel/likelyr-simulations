@@ -82,7 +82,6 @@ echo "📂 Runtime dir: ${EXP_DIR}"
 
 # ===============================
 # Validate experiment directory
-# (must already exist — created by expand_design.R)
 # ===============================
 if [[ ! -d "$EXP_DIR" ]]; then
   echo "❌ ERROR: Experiment directory not found:"
@@ -97,7 +96,6 @@ echo "✅ Experiment directory confirmed"
 
 # ===============================
 # Discover simulation directories
-# (written by expand_design.R)
 # ===============================
 SIM_DIRS=( "$EXP_DIR"/sim_*/ )
 
@@ -113,7 +111,7 @@ echo "🔢 Found ${#SIM_DIRS[@]} simulation(s)"
 # ===============================
 # Build model spec for each simulation
 # ===============================
-RSCRIPT_PATH="scripts/build_model_spec.R"
+RSCRIPT_PATH="R/build_model_spec.R"
 
 if [[ ! -f "$RSCRIPT_PATH" ]]; then
   echo "❌ ERROR: Could not find $RSCRIPT_PATH"
@@ -139,11 +137,9 @@ for SIM_DIR in "${SIM_DIRS[@]}"; do
     continue
   fi
 
-  # Create directory skeleton
   mkdir -p "${SIM_DIR}model"
   mkdir -p "${SIM_DIR}iterations"
 
-  # Build model spec
   Rscript "$RSCRIPT_PATH" "$SIM_YML"
 
   echo "✅ Simulation initialized: ${SIM_DIR}"

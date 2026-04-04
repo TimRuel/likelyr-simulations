@@ -7,7 +7,7 @@ set -euo pipefail
 # Contract:
 #   • Accepts <path/to/exp_vX.yml> (from config/)
 #   • Reads version to derive EXP_RUN_DIR
-#   • Calls scripts/analyze_iter.R for each simulation
+#   • Calls R/analyze_iter.R for each simulation
 #   • Skips simulations whose analysis outputs already exist
 # ============================================================
 
@@ -21,7 +21,6 @@ fi
 
 # ===============================
 # Expected output filenames
-# (must match what analyze_iter.R actually writes)
 # ===============================
 POINT_FILE="metrics_point_iteration.rds"
 INTERVAL_FILE="metrics_interval_iteration.rds"
@@ -50,18 +49,10 @@ cd "$PROJECT_ROOT"
 # ===============================
 # Read version and derive EXP_RUN_DIR
 # ===============================
-EXP_VERSION="$(
-  Rscript -e "
-    suppressPackageStartupMessages(library(yaml))
-    cfg <- read_yaml('$EXP_YML')
-    v <- cfg[['experiment']][['version']]
-    if (is.null(v) || !nzchar(v)) quit(status = 1)
-    cat(v)
-  "
-)"
+EXP_VERSION="$(grep -m1 '^\s*version:' "$EXP_YML" | sed 's/.*version:\s*//' | tr -d '[:space:]"')"
 
 if [[ -z "$EXP_VERSION" ]]; then
-  echo "❌ experiment\$version missing or invalid in $EXP_YML"
+  echo "❌ experiment\$version missing or unparseable in $EXP_YML"
   exit 1
 fi
 
@@ -92,7 +83,7 @@ for SIM_DIR in "$EXP_RUN_DIR"/sim_*/; do
 
   echo "▶ Analyzing ${SIM_ID}"
   mkdir -p "$ANALYSIS_DIR"
-  Rscript scripts/analyze_iter.R "$SIM_DIR"
+  Rscript R/analyze_iter.R "$SIM_DIR"
 done
 
 echo "✔ Analysis complete: $EXP_RUN_DIR"

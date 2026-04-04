@@ -7,9 +7,9 @@
 #   • Load a single iteration artifact for interactive exploration
 #   • No CLI — edit the USER INPUT section below
 #
-# Expects:
-#   experiments/<path>/<version>/test_sim_XX/iterations/iter_XXXX/model.rds  (test)
-#   experiments/<path>/<version>/sim_XX/iterations/iter_XXXX/model.rds       (slurm)
+# Paths:
+#   test:  experiments/<path>/<version>/sim_XX/test_iteration/model/model.rds
+#   slurm: experiments/<path>/<version>/sim_XX/iterations/iter_XXXX/model.rds
 # ============================================================
 
 suppressPackageStartupMessages({
@@ -24,11 +24,11 @@ suppressPackageStartupMessages({
 # ============================================================
 
 sim_dir <- "experiments/multinom/logit_simpson/exp_v1/sim_01"
-iter_index <- 1L
-mode <- "slurm" # "test" or "slurm"
+iter_index <- 1L # only used in slurm mode
+mode <- "test" # "test" or "slurm"
 
 # ============================================================
-# Resolve iteration directory
+# Resolve model path
 # ============================================================
 sim_dir <- path_abs(sim_dir)
 
@@ -38,33 +38,20 @@ if (!dir_exists(sim_dir)) {
 
 sim_id <- path_file(sim_dir)
 
-iter_id <- if (mode == "test") {
-  sprintf("test_%04d", iter_index)
+model_path <- if (mode == "test") {
+  path(sim_dir, "test_iteration", "model", "model.rds")
 } else {
-  sprintf("iter_%04d", iter_index)
+  iter_id <- sprintf("iter_%04d", iter_index)
+  path(sim_dir, "iterations", iter_id, "model.rds")
 }
-
-iter_root <- if (mode == "test") {
-  path(sim_dir, "test_runs")
-} else {
-  path(sim_dir, "iterations")
-}
-
-iter_dir <- path(iter_root, iter_id)
-
-if (!dir_exists(iter_dir)) {
-  stop("Iteration directory not found: ", iter_dir, call. = FALSE)
-}
-
-# ============================================================
-# Load model
-# ============================================================
-model_path <- path(iter_dir, "model.rds")
 
 if (!file_exists(model_path)) {
   stop("model.rds not found: ", model_path, call. = FALSE)
 }
 
+# ============================================================
+# Load model
+# ============================================================
 model <- readRDS(model_path)
 
 # ============================================================
@@ -85,49 +72,3 @@ model$workspace$comparison |> plot()
 model$workspace$comparison |> view()
 
 model$workspace$integrated$diagnostics |> plot()
-
-# ============================================================
-# Scratch / exploratory
-# ============================================================
-model$data
-
-branch_mat <- model$workspace$integrated$branch_mat
-n_branches <- ncol(branch_mat)
-
-psi_vals <- model$workspace$integrated$diagnostics$plot_data$omega_branches$psi
-omega_draws <- model$workspace$integrated$cache$branch_seeds |>
-  purrr::map(\(s) s$omega_hat)
-
-psi_jac <- model$estimand$psi_jac
-param_mle <- model$parameter$param_mle
-
-dist_eta <- function(omega_hat, param_mle) {
-  sqrt(sum((omega_hat - param_mle)^2))
-}
-
-min_prob <- function(omega_hat) {
-  min(softmax_from_eta(omega_hat))
-}
-
-psi_grad_norm <- function(omega_hat, psi_jac) {
-  g <- psi_jac(omega_hat)
-  sqrt(sum(g^2))
-}
-
-# Branch-by-branch inspection
-for (i in seq_len(min(50L, n_branches))) {
-  plot(x = psi_vals, y = branch_mat[, i])
-  title(psi_grad_norm(omega_draws[[i]], psi_jac))
-}
-
-# Order branches by minimum simplex probability
-ord <- order(sapply(omega_draws, min_prob))
-
-for (i in ord[seq_len(min(50L, n_branches))]) {
-  plot(psi_vals, branch_mat[, i])
-  title(sprintf(
-    "min(p)=%.2e | dist=%.2f",
-    min_prob(omega_draws[[i]]),
-    dist_eta(omega_draws[[i]], param_mle)
-  ))
-}

@@ -6,6 +6,10 @@ experiment:
   spec_path: specs/multinom/logit_simpson
   seed_base: 8000
 
+test:
+  sampler.min_branches: 50
+  sampler.branch_buffer: 25
+
 design:
   type: points
   require_existing_paths: true

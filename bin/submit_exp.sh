@@ -100,7 +100,7 @@ if [[ ! -d "${SIM_DIRS[0]}" ]]; then
   exit 1
 fi
 
-SLURM_SCRIPT="jobs/slurm_iter.sh"
+SLURM_SCRIPT="bin/slurm_iter.sh"
 
 # ===============================
 # Submit Slurm jobs

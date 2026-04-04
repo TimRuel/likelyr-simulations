@@ -106,7 +106,7 @@ echo ""
 # ===============================
 # Run iteration engine
 # ===============================
-RSCRIPT_PATH="scripts/run_iter.R"
+RSCRIPT_PATH="R/run_iter.R"
 
 if [[ ! -f "$RSCRIPT_PATH" ]]; then
   echo "❌ ERROR: Could not find $RSCRIPT_PATH"

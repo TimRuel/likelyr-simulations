@@ -33,7 +33,7 @@ args <- commandArgs(trailingOnly = TRUE)
 
 if (length(args) != 1L) {
   stop(
-    "Usage: Rscript scripts/analyze_iter.R <path/to/sim_dir>",
+    "Usage: Rscript R/analyze_iter.R <path/to/sim_dir>",
     call. = FALSE
   )
 }

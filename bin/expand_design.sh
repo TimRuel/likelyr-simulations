@@ -6,7 +6,7 @@ set -euo pipefail
 #
 # Contract:
 #   • Accepts <path/to/exp_vX.yml> (from config/)
-#   • Runs expand_design.R
+#   • Runs R/expand_design.R
 #   • Verifies sim_* directories were created in experiments/
 #   • Does NOT inspect or re-derive design logic
 #   • Config directory is never written to
@@ -67,9 +67,8 @@ echo "📂 Config directory: ${EXP_CFG_DIR}"
 
 # ===============================
 # Read version directly from YAML via grep
-# Avoids a second Rscript call after the main one
 # ===============================
-EXP_VERSION="$(grep -m1 '^\s*version:' "$EXP_YML" | sed 's/.*version:\s*//' | tr -d '[:space:]"' )"
+EXP_VERSION="$(grep -m1 '^\s*version:' "$EXP_YML" | sed 's/.*version:\s*//' | tr -d '[:space:]"')"
 
 if [[ -z "$EXP_VERSION" ]]; then
   echo "❌ ERROR: experiment\$version missing or unparseable in $EXP_YML"
@@ -79,7 +78,7 @@ fi
 # ===============================
 # Run R-side generation
 # ===============================
-RSCRIPT_PATH="scripts/expand_design.R"
+RSCRIPT_PATH="R/expand_design.R"
 
 if [[ ! -f "$RSCRIPT_PATH" ]]; then
   echo "❌ ERROR: Could not find $RSCRIPT_PATH"
@@ -90,7 +89,6 @@ Rscript "$RSCRIPT_PATH" "$EXP_YML"
 
 # ===============================
 # Validate output
-# Sim dirs are written to experiments/<path>/<version>/sim_*/
 # ===============================
 EXP_RUN_DIR="experiments/${EXPERIMENT_REL}/${EXP_VERSION}"
 SIM_DIRS=( "$EXP_RUN_DIR"/sim_*/ )

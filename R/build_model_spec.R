@@ -33,7 +33,7 @@ root <- here()
 # 2. Load local utilities
 # ============================================================
 source(
-  file.path(root, "scripts", "utils.R"),
+  file.path(root, "R", "utils.R"),
   local = TRUE
 )
 
