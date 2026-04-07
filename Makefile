@@ -21,7 +21,7 @@ BIN_DIR         := bin
 # -------------------------------------------------
 # Phony targets
 # -------------------------------------------------
-.PHONY: help gen setup submit experiment analyze status dry-run clean test-sim
+.PHONY: help gen setup submit experiment analyze-sim analyze-exp status dry-run clean test-sim
 
 # -------------------------------------------------
 # Help
@@ -29,22 +29,25 @@ BIN_DIR         := bin
 help:
 	@echo ""
 	@echo "Experiment workflow (config-driven):"
-	@echo "  make experiment EXP_CONFIG=<path/to/exp_vX.yml>"
+	@echo "  make experiment  EXP_CONFIG=<path/to/exp_vX.yml>"
 	@echo ""
 	@echo "Individual steps:"
-	@echo "  make gen        EXP_CONFIG=..."
-	@echo "  make setup      EXP_CONFIG=..."
-	@echo "  make submit     EXP_CONFIG=..."
-	@echo "  make analyze    EXP_CONFIG=..."
+	@echo "  make gen         EXP_CONFIG=..."
+	@echo "  make setup       EXP_CONFIG=..."
+	@echo "  make submit      EXP_CONFIG=..."
+	@echo ""
+	@echo "Analysis:"
+	@echo "  make analyze-sim SIM_CONFIG=<path/to/sim_XX/sim_XX.yml>"
+	@echo "  make analyze-exp EXP_CONFIG=<path/to/exp_vX.yml>"
 	@echo ""
 	@echo "Local testing:"
-	@echo "  make test-sim   SIM_CONFIG=..."
+	@echo "  make test-sim    SIM_CONFIG=..."
 	@echo "  Note: make setup must be run first to build model specs."
 	@echo ""
 	@echo "Utilities:"
-	@echo "  make dry-run    EXP_CONFIG=..."
+	@echo "  make dry-run     EXP_CONFIG=..."
 	@echo "  make status"
-	@echo "  make clean      (refuses)"
+	@echo "  make clean       (refuses)"
 	@echo ""
 
 # -------------------------------------------------
@@ -90,14 +93,22 @@ endif
 	@echo "✔ Experiment launched from $(EXP_CONFIG)"
 
 # -------------------------------------------------
-# Analyze experiment
+# Analyze a single simulation
 # -------------------------------------------------
-analyze:
+analyze-sim:
+ifndef SIM_CONFIG
+	$(error SIM_CONFIG must be set, e.g. SIM_CONFIG=experiments/<path>/<version>/sim_XX/sim_XX.yml)
+endif
+	bash $(BIN_DIR)/analyze_sim.sh $(SIM_CONFIG)
+
+# -------------------------------------------------
+# Analyze all simulations in an experiment
+# -------------------------------------------------
+analyze-exp:
 ifndef EXP_CONFIG
 	$(error EXP_CONFIG must be set, e.g. EXP_CONFIG=config/multinom/logit_simpson/exp_v1.yml)
 endif
-	@echo "▶ Analyzing simulations"
-	bash $(BIN_DIR)/analyze_sim.sh $(EXP_CONFIG)
+	bash $(BIN_DIR)/analyze_exp.sh $(EXP_CONFIG)
 
 # -------------------------------------------------
 # Test single simulation locally
@@ -127,8 +138,9 @@ endif
 	@echo "  2. bash $(BIN_DIR)/init_exp.sh $(EXP_CONFIG)"
 	@echo "  3. bash $(BIN_DIR)/submit_exp.sh $(EXP_CONFIG)"
 	@echo ""
-	@echo "To test a simulation after setup:"
-	@echo "  make test-sim SIM_CONFIG=experiments/<path>/<version>/sim_XX/sim_XX.yml"
+	@echo "To analyze after runs complete:"
+	@echo "  make analyze-sim SIM_CONFIG=experiments/<path>/<version>/sim_XX/sim_XX.yml"
+	@echo "  make analyze-exp EXP_CONFIG=config/multinom/logit_simpson/exp_v1.yml"
 	@echo ""
 	@echo "✔ Dry run complete"
 

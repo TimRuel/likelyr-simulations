@@ -14,22 +14,28 @@ suppressPackageStartupMessages({
 # ------------------------------------------------------------
 # USER INPUT (edit this line only)
 # ------------------------------------------------------------
-sim_dir <- "experiments/multinom/baseline_logit/sim_08"
+sim_dir <- "experiments/multinom/logit_simpson/exp_v1/sim_05"
 
-sim_config <- read_yaml(file.path(sim_dir, "simulation.yml"))
+# ------------------------------------------------------------
+# Load sim config
+# ------------------------------------------------------------
+sim_id <- path_file(sim_dir)
+sim_config <- read_yaml(path(sim_dir, paste0(sim_id, ".yml")))
 
 # ------------------------------------------------------------
 # Resolve paths
 # ------------------------------------------------------------
-sim_dir <- path_abs(sim_dir)
+analysis_dir <- path(sim_dir, "analysis")
+point_path <- path(analysis_dir, "sim_point_metrics.rds")
+interval_path <- path(analysis_dir, "sim_interval_metrics.rds")
 
-analysis_path <- path(sim_dir, "analysis", "metrics_iteration.rds")
-
-if (!file_exists(analysis_path)) {
+if (!file_exists(point_path) || !file_exists(interval_path)) {
   stop(
-    "Analysis file not found:\n  ",
-    analysis_path,
-    "\n\nDid you run analyze_sim.R for this simulation?",
+    "Analysis files not found in:\n  ",
+    analysis_dir,
+    "\n\nDid you run: make analyze SIM_CONFIG=",
+    path(sim_dir, paste0(sim_id, ".yml")),
+    "?",
     call. = FALSE
   )
 }
@@ -37,22 +43,19 @@ if (!file_exists(analysis_path)) {
 # ------------------------------------------------------------
 # Load results
 # ------------------------------------------------------------
-metrics <- readRDS(analysis_path)
+point_df <- readRDS(point_path)
+interval_df <- readRDS(interval_path)
 
-message("✔ Loaded metrics for: ", path_file(sim_dir))
-message("✔ Rows: ", nrow(metrics))
-
-# ------------------------------------------------------------
-# Attach to environment (convenience)
-# ------------------------------------------------------------
-analysis_iter_df <- metrics
+message("✔ Loaded metrics for: ", sim_id)
+message("  • point rows:    ", nrow(point_df))
+message("  • interval rows: ", nrow(interval_df))
 
 # ------------------------------------------------------------
-# Common quick views (optional but useful)
+# Common quick views
 # ------------------------------------------------------------
 
 # 1. Coverage by method and level
-coverage_summary <- analysis_iter_df |>
+coverage_summary <- interval_df |>
   filter(!is.na(covered)) |>
   group_by(level, pseudolikelihood) |>
   summarise(
@@ -62,7 +65,7 @@ coverage_summary <- analysis_iter_df |>
   )
 
 # 2. Interval width summary
-interval_width_summary <- analysis_iter_df |>
+width_summary <- interval_df |>
   filter(valid_ci) |>
   group_by(level, pseudolikelihood) |>
   summarise(
@@ -72,7 +75,7 @@ interval_width_summary <- analysis_iter_df |>
   )
 
 # 3. Point estimator performance
-point_summary <- analysis_iter_df |>
+point_summary <- point_df |>
   group_by(pseudolikelihood) |>
   summarise(
     bias = mean(bias),
@@ -82,25 +85,16 @@ point_summary <- analysis_iter_df |>
   )
 
 message("✔ Objects available in environment:")
-message("  • analysis_iter_df")
+message("  • point_df")
+message("  • interval_df")
 message("  • coverage_summary")
-message("  • interval_width_summary")
+message("  • width_summary")
 message("  • point_summary")
 
 # ------------------------------------------------------------
-# Optional: auto-print summaries
+# Auto-print summaries
 # ------------------------------------------------------------
 print(sim_config$design$overrides)
-print(coverage_summary)
-print(interval_width_summary)
 print(point_summary)
-
-# model <- readRDS(file.path(sim_dir, "iterations", "iter_0001", "model.rds"))
-
-# model$data
-
-model$workspace$integrate$omega_draws |>
-  purrr::map(model$estimand$psi_fn)
-
-
-model$estimand$psi_mle
+print(coverage_summary)
+print(width_summary)

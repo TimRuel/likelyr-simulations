@@ -67,7 +67,6 @@ for (iter_dir in iter_dirs) {
   iter_id <- path_file(iter_dir)
 
   model_path <- path(iter_dir, "model.rds")
-  runtime_path <- path(iter_dir, "runtime.rds")
 
   if (!file_exists(model_path)) {
     warning("Missing model.rds: ", iter_id)
@@ -75,12 +74,6 @@ for (iter_dir in iter_dirs) {
   }
 
   model <- readRDS(model_path)
-
-  runtime_df <- if (file_exists(runtime_path)) {
-    readRDS(runtime_path)
-  } else {
-    NULL
-  }
 
   # ----------------------------------------------------------
   # infer + compare (post-processing only)
@@ -159,22 +152,11 @@ for (iter_dir in iter_dirs) {
       by = c("experiment", "simulation", "iteration", "pseudolikelihood")
     )
 
-  if (!is.null(runtime_df)) {
-    point_metrics <- point_metrics |>
-      full_join(runtime_df, by = "pseudolikelihood")
-  }
-
   # ----------------------------------------------------------
   # Interval metrics (LEVEL-SPECIFIC)
   # ----------------------------------------------------------
   interval_raw <- attr(interval_df, "interval_estimates_raw") |>
-    mutate(
-      pseudolikelihood = recode_values(
-        pseudolikelihood,
-        "integrate" ~ "Integrated",
-        "profile" ~ "Profile"
-      )
-    )
+    mutate(pseudolikelihood = tools::toTitleCase(pseudolikelihood))
 
   alpha_to_level <- interval_raw |>
     distinct(alpha) |>
@@ -183,10 +165,10 @@ for (iter_dir in iter_dirs) {
   interval_raw <- interval_raw |>
     left_join(alpha_to_level, by = "alpha")
 
-  interval_df2 <- interval_df |>
-    left_join(
-      interval_raw |>
-        select(pseudolikelihood, level, alpha, lower, upper),
+  interval_df2 <- interval_raw |>
+    select(pseudolikelihood, level, alpha, lower, upper) |>
+    right_join(
+      interval_df,
       by = c("pseudolikelihood", "level")
     ) |>
     mutate(valid_ci = is.finite(lower) & is.finite(upper))

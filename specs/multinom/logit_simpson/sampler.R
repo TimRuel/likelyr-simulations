@@ -13,12 +13,12 @@
 #     each point into a height component along the cap axis n_1 and a
 #     uniform component in the orthogonal subspace of Pi.
 #
-#     The height coordinate h = cos(theta) is sampled via inversion of
-#     the marginal CDF of theta ~ sin(theta)^(J-3) on [0, alpha]:
-#       theta = arcsin(U^(1/(J-2)) * sin(alpha)),  U ~ Uniform(0,1)
-#     This is exact and efficient regardless of how narrow the cap is.
-#     No simplex boundary rejection is needed. Orbit expansion covers
-#     all J caps.
+#     The polar angle theta has marginal density proportional to
+#     sin(theta)^(J-3) on [0, alpha] (from the surface element of the
+#     (J-2)-sphere). With the substitution s = sin^2(theta), the CDF
+#     of theta is the regularized incomplete beta function with
+#     parameters ((J-2)/2, 1/2), evaluated at sin^2(alpha). Exact
+#     inversion via qbeta() gives h = cos(theta) with no rejection.
 #
 #   Connected regime (psi_hat < 1/(J-1)):
 #     L_psi_hat lies entirely within Delta^{J-1}. Base draws are taken
@@ -45,18 +45,27 @@ simpson_sampler_fn <- function(param_dim, psi_mle, ...) {
     # ------------------------------------------------------------------
     # Disconnected regime: exact uniform draw from cap near e_1.
     #
-    # Any point on the (J-2)-sphere can be written as:
-    #   v = r * (h * n_1 + sqrt(1 - h^2) * u)
-    # where:
-    #   n_1  = unit vector along cap axis (from c toward e_1)
-    #   h    = cos(theta) in [cos(alpha), 1], the height coordinate
-    #   u    = unit vector in the (J-3)-dimensional subspace of the
-    #          tangent space of Pi orthogonal to n_1
+    # Any point on the cap can be written as:
+    #   x = c + v,  where  v = r * (h * n_1 + sqrt(1 - h^2) * u)
     #
-    # theta is sampled via exact inversion of its marginal CDF:
-    #   theta ~ sin(theta)^(J-3) on [0, alpha]
-    #   theta = arcsin(U^(1/(J-2)) * sin(alpha)),  U ~ Uniform(0,1)
-    # This is exact and efficient for any cap width.
+    # n_1  = unit vector along cap axis (from c toward e_1) in Pi
+    # h    = cos(theta) in [cos(alpha), 1], the height coordinate
+    # u    = unit vector in the (J-3)-dimensional subspace of Pi
+    #        orthogonal to n_1
+    #
+    # The surface element of the (J-2)-sphere decomposes as:
+    #   dA \propto sin(theta)^(J-3) * r * d(theta) * d(sigma_{J-3})
+    # so the marginal density of theta is:
+    #   f(theta) \propto sin(theta)^(J-3),  theta in [0, alpha]
+    #
+    # With s = sin^2(theta), the CDF of theta is:
+    #   F(theta) = I_{sin^2(theta)}((J-2)/2, 1/2)
+    #              / I_{sin^2(alpha)}((J-2)/2, 1/2)
+    # where I_x(a, b) is the regularized incomplete beta function.
+    # Inversion: draw U ~ Uniform(0,1), then
+    #   s = qbeta(U * pbeta(sin^2(alpha), (J-2)/2, 1/2), (J-2)/2, 1/2)
+    #   h = cos(theta) = sqrt(1 - s)
+    # This is exact for all J >= 3 with no rejection.
     # ------------------------------------------------------------------
 
     # Cap axis: unit vector from c toward e_1 within Pi
@@ -72,20 +81,24 @@ simpson_sampler_fn <- function(param_dim, psi_mle, ...) {
     alpha <- acos(cos_alpha)
     sin_alpha <- sin(alpha)
 
-    # Exact height sampler via inversion
+    # Height sampler: exact inversion via regularized incomplete beta
     draw_h <- if (J == 2L) {
-      # Degenerate: 0-sphere, only the cap center
+      # Degenerate: 0-sphere, cap collapses to a single point
       function() 1
-    } else if (J == 3L) {
-      # 1-sphere: theta uniform on [0, alpha], so h uniform on [cos_alpha, 1]
-      function() runif(1, cos_alpha, 1)
     } else {
-      # J >= 4: exact inversion of sin(theta)^(J-3) on [0, alpha]
-      #   theta = arcsin(U^(1/(J-2)) * sin(alpha)),  U ~ Uniform(0,1)
-      inv_dim <- 1 / (J - 2L)
+      # J >= 3: exact inversion of f(theta) \propto sin(theta)^(J-3)
+      # via the substitution s = sin^2(theta), which maps the CDF to
+      # a regularized incomplete beta with parameters ((J-2)/2, 1/2).
+      # Special cases:
+      #   J = 3: Beta(1/2, 1/2) — arcsine distribution; reduces to
+      #          theta = U * alpha, h = cos(U * alpha)
+      #   J = 4: Beta(1, 1/2); reduces to h uniform on [cos_alpha, 1]
+      #   J >= 5: no simple closed form; qbeta() inverts numerically
+      a <- (J - 2) / 2
+      p_alpha <- pbeta(sin_alpha^2, a, 0.5)
       function() {
-        theta <- asin(runif(1)^inv_dim * sin_alpha)
-        cos(theta)
+        s <- qbeta(runif(1) * p_alpha, a, 0.5)
+        sqrt(1 - s)
       }
     }
 
@@ -93,7 +106,8 @@ simpson_sampler_fn <- function(param_dim, psi_mle, ...) {
       h <- draw_h()
 
       # Sample unit vector u in subspace of Pi orthogonal to n_1:
-      # generate Gaussian, project out 1 direction then n_1 direction
+      # generate Gaussian, project out the 1 direction (to stay in Pi),
+      # then project out the n_1 direction, then normalize.
       w <- rnorm(J)
       w <- w - mean(w) # project onto tangent space of Pi
       w <- w - sum(w * n_1) * n_1 # project out n_1 component
@@ -112,7 +126,9 @@ simpson_sampler_fn <- function(param_dim, psi_mle, ...) {
   } else {
     # ------------------------------------------------------------------
     # Connected regime: L_psi_hat lies entirely within Delta^{J-1}.
-    # Draw uniformly from the full (J-2)-sphere — no rejection needed.
+    # Draw uniformly from the full (J-2)-sphere by projecting a
+    # Gaussian onto the tangent space of Pi and normalizing.
+    # No rejection needed.
     # ------------------------------------------------------------------
     function(history = NULL) {
       repeat {
@@ -168,7 +184,7 @@ make_sampler <- function(config) {
     stop("Config must contain a 'sampler' section.", call. = FALSE)
   }
 
-  sampler_spec(
+  likelyr::sampler_spec(
     sampler_fn = simpson_sampler_fn,
     orbit_expander_fn = simpson_orbit_expander_fn,
     orbit_size = cfg$orbit_size %||% NULL,
