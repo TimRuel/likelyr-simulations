@@ -7,7 +7,7 @@ set -euo pipefail
 # Contract:
 #   • Accepts <path/to/exp_vX.yml> (from config/)
 #   • Runs R/expand_design.R
-#   • Verifies sim_* directories were created in experiments/
+#   • Verifies sim_* directories were created in exp_dir
 #   • Does NOT inspect or re-derive design logic
 #   • Config directory is never written to
 # ============================================================
@@ -52,28 +52,23 @@ echo "📁 PROJECT_ROOT resolved to: $PROJECT_ROOT"
 echo "🧪 Using experiment config: $EXP_YML"
 
 # ===============================
-# Resolve config directory and experiment path
-# ===============================
-EXP_CFG_DIR="$(dirname "$EXP_YML")"
-EXPERIMENT_REL="$(realpath --relative-to=config "$EXP_CFG_DIR")"
-
-if [[ -z "$EXPERIMENT_REL" || "$EXPERIMENT_REL" == "." ]]; then
-  echo "❌ ERROR: experiment config must live under config/<path>/"
-  exit 1
-fi
-
-echo "🧪 Experiment: ${EXPERIMENT_REL}"
-echo "📂 Config directory: ${EXP_CFG_DIR}"
-
-# ===============================
-# Read version directly from YAML via grep
+# Read paths directly from YAML
 # ===============================
 EXP_VERSION="$(grep -m1 '^\s*version:' "$EXP_YML" | sed 's/.*version:\s*//' | tr -d '[:space:]"')"
+EXP_RUN_DIR="$(grep -m1 '^\s*exp_dir:' "$EXP_YML" | sed 's/.*exp_dir:\s*//' | tr -d '[:space:]"')"
 
 if [[ -z "$EXP_VERSION" ]]; then
   echo "❌ ERROR: experiment\$version missing or unparseable in $EXP_YML"
   exit 1
 fi
+
+if [[ -z "$EXP_RUN_DIR" ]]; then
+  echo "❌ ERROR: experiment\$exp_dir missing or unparseable in $EXP_YML"
+  exit 1
+fi
+
+echo "🔖 Version: ${EXP_VERSION}"
+echo "📂 Exp dir: ${EXP_RUN_DIR}"
 
 # ===============================
 # Run R-side generation
@@ -90,15 +85,15 @@ Rscript "$RSCRIPT_PATH" "$EXP_YML"
 # ===============================
 # Validate output
 # ===============================
-EXP_RUN_DIR="experiments/${EXPERIMENT_REL}/${EXP_VERSION}"
-SIM_DIRS=( "$EXP_RUN_DIR"/sim_*/ )
+CONFIG_SIM_DIR="$(dirname "$EXP_YML")"
+SIM_YMLS=( "$CONFIG_SIM_DIR"/sim_*.yml )
 
-if [[ ! -d "${SIM_DIRS[0]}" ]]; then
-  echo "❌ ERROR: expand_design.R produced no sim_* directories in:"
-  echo "    $EXP_RUN_DIR"
+if [[ ! -f "${SIM_YMLS[0]}" ]]; then
+  echo "❌ ERROR: expand_design.R produced no sim_*.yml files in:"
+  echo "    $CONFIG_SIM_DIR"
   echo "Check the design block in:"
   echo "  $EXP_YML"
   exit 1
 fi
 
-echo "✔ Generated ${#SIM_DIRS[@]} simulation config(s) in: ${EXP_RUN_DIR}"
+echo "✔ Generated ${#SIM_YMLS[@]} simulation config(s) in: ${CONFIG_SIM_DIR}"

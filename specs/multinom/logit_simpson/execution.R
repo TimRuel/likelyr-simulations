@@ -8,7 +8,7 @@
 #     stop("Config must contain an 'execution' section.", call. = FALSE)
 #   }
 #
-#   parallel_spec(
+#   likelyr::parallel_spec(
 #     num_workers   = cfg$num_workers,
 #     packages      = cfg$packages,
 #     name          = "Parallel execution"
@@ -21,7 +21,7 @@ make_execution <- function(config) {
     stop("Config must contain an 'execution' section.", call. = FALSE)
   }
 
-  serial_spec(
+  likelyr::serial_spec(
     packages = cfg$packages,
     name = "Serial execution"
   )

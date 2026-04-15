@@ -1,0 +1,65 @@
+experiment:
+  version: exp_v1
+  distribution: multinomial
+  model: logit
+  estimand: simpson
+  seed_base: 8000
+  specs_dir: /gpfs/home/tbr0780/likelyr-simulations/specs/multinom/logit_simpson
+  logs_dir: /gpfs/home/tbr0780/likelyr-simulations/logs/multinom/logit_simpson/exp_v1
+  exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/logit_simpson/exp_v1
+simulation:
+  sim_id: sim_14
+  seed_base: 1408000
+  iterations: 1000
+design:
+  design_type: points
+  overrides:
+    parameter.param_dim: 9
+    data.n_obs: 40
+    parameter.index_target_frac: 0.2
+test:
+  sampler.min_branches: 10
+  sampler.branch_buffer: 5
+  data.n_obs: 50
+  parameter.param_dim: 9
+  parameter.index_target_frac: 0.1
+parameter:
+  param_dim: 9
+  index_target_frac: 0.2
+  seed: 1408000
+likelihood:
+  family: multinomial
+  link: logit
+sampler:
+  min_branches: 250
+  branch_buffer: 50
+  seed_base: 1418000
+traversal:
+  increment: 0.001
+  traversal_method: topdown
+  confidence_levels:
+  - 0.9
+  - 0.95
+  - 0.99
+  cutoff_buffer: 1.5
+  n_adjacent: 3
+  max_mode_shifts: 20
+  k_recent: 3
+  drop_multiplier: 10.0
+  cap_multiplier: 10.0
+  mode_gap_multiplier: 10.0
+  extend_to_lower: yes
+  extend_to_upper: no
+solver:
+  localsolver: SLSQP
+  control:
+    xtol_rel: 1.0e-08
+    maxeval: 1000
+  localtol: 1.0e-06
+  max_retries: 50
+execution:
+  mode: serial
+  packages: likelyr
+data:
+  n_obs: 40
+  seed_base: 1428000

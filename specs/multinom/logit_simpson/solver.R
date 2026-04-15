@@ -8,7 +8,7 @@ make_solver <- function(config) {
     stop("Config must contain a 'solver' section.", call. = FALSE)
   }
 
-  solver_spec(
+  likelyr::solver_spec(
     localsolver = cfg$localsolver %||% "SLSQP",
     control = cfg$control %||% list(),
     localtol = cfg$localtol %||% 1e-6,

@@ -8,17 +8,17 @@
 #   • Execution mode determined by env var:
 #       LIKELYR_EXEC_MODE = "slurm" | "test"
 #   • Input:
-#       slurm: <path/to/sim_XX/sim_XX.yml>
-#       test:  <path/to/sim_XX/test_iteration/test_sim.yml>
+#       slurm: <path/to/config/.../sim_XX.yml>
+#       test:  <path/to/.../test_iter/test_sim.yml>
+#   • Derives sim_dir from experiment$exp_dir + simulation$sim_id
+#     in both modes — no path derivation from yaml location
 #   • Output:
 #       slurm: <sim_dir>/iterations/iter_XXXX/model.rds
-#       test:  <test_iteration>/model/model.rds  (overwrites build output)
+#       test:  <sim_dir>/model.rds
 #
 # Environment variables:
-#   LIKELYR_EXEC_MODE   "slurm" | "test"       (default: "slurm")
-#   LIKELYR_VERBOSE     "TRUE"  | "FALSE"       (default: "TRUE")
-#   LIKELYR_SIM_DIR     in test mode: path to test_iteration/
-#                       provides model/model.rds and is the output dir
+#   LIKELYR_EXEC_MODE   "slurm" | "test"   (default: "slurm")
+#   LIKELYR_VERBOSE     "TRUE"  | "FALSE"  (default: "TRUE")
 #
 # Seed hierarchy:
 #   experiment.seed_base                              — exp-level anchor
@@ -43,7 +43,7 @@ args <- commandArgs(trailingOnly = TRUE)
 
 if (length(args) != 1L) {
   stop(
-    "Usage: Rscript R/run_iter.R <path/to/sim_XX/sim_XX.yml>",
+    "Usage: Rscript R/run_iter.R <path/to/sim_XX.yml>",
     call. = FALSE
   )
 }
@@ -75,33 +75,38 @@ if (!exec_mode %in% c("slurm", "test")) {
 }
 
 # ============================================================
-# Resolve simulation directory and iteration paths
-#
-# test:  LIKELYR_SIM_DIR = test_iteration/
-#        model/model.rds is loaded from there and overwritten
-#        iter_index fixed at 1 for seed derivation
-#
-# slurm: sim_dir from yaml path
-#        iter_dir = sim_dir/iterations/iter_XXXX/
+# Load simulation config
+# ============================================================
+config <- read_yaml(sim_yml)
+
+# ============================================================
+# Resolve simulation directory from config
+# ============================================================
+exp_dir <- config$experiment$exp_dir
+sim_id <- config$simulation$sim_id
+
+if (is.null(exp_dir) || !nzchar(exp_dir)) {
+  stop("experiment$exp_dir must be defined in the sim yaml.", call. = FALSE)
+}
+if (is.null(sim_id) || !nzchar(sim_id)) {
+  stop("simulation$sim_id must be defined in the sim yaml.", call. = FALSE)
+}
+
+sim_dir <- path(exp_dir, sim_id)
+
+# ============================================================
+# Resolve iteration index and output directory
 # ============================================================
 if (exec_mode == "test") {
-  sim_dir_env <- Sys.getenv("LIKELYR_SIM_DIR", "")
-  if (!nzchar(sim_dir_env)) {
-    stop("LIKELYR_SIM_DIR must be set in test mode.", call. = FALSE)
-  }
-  sim_dir <- path_abs(sim_dir_env) # test_iteration/
-  iter_id <- "test_iteration"
+  iter_id <- "test_iter"
   iter_index <- 1L
 } else {
-  sim_dir <- path_dir(sim_yml)
   iter_index <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID", NA)) + 1L
   if (is.na(iter_index) || iter_index < 1L) {
     stop("SLURM_ARRAY_TASK_ID not set or invalid.", call. = FALSE)
   }
   iter_id <- sprintf("iter_%04d", iter_index)
 }
-
-sim_id <- path_file(sim_dir)
 
 message("🚀 Starting iteration")
 message("  Mode:        ", exec_mode)
@@ -110,14 +115,7 @@ message("  Iteration:   ", iter_id)
 message("  Verbose:     ", verbose)
 
 # ============================================================
-# Load simulation config
-# ============================================================
-config <- read_yaml(sim_yml)
-
-# ============================================================
-# Load model skeleton
-# In test mode: test_iteration/model/model.rds (built from test_sim.yml)
-# In slurm mode: sim_XX/model/model.rds
+# Load model skeleton from sim_dir/model/model.rds
 # ============================================================
 model_path <- path(sim_dir, "model", "model.rds")
 
@@ -134,12 +132,17 @@ data_seed <- as.integer(config$data$seed_base) + iter_index
 sampler_seed <- as.integer(config$sampler$seed_base) + iter_index
 
 # ============================================================
-# Generate iteration data (data seed)
+# Generate iteration data
 # ============================================================
 set.seed(data_seed)
 
-spec_dir <- path(root, config$experiment$spec_path)
-data_spec_env <- load_data_env(spec_dir)
+specs_dir <- config$experiment$specs_dir
+
+if (is.null(specs_dir) || !nzchar(specs_dir)) {
+  stop("experiment$specs_dir must be defined in the sim yaml.", call. = FALSE)
+}
+
+data_spec_env <- load_data_env(specs_dir)
 
 data <- data_spec_env$generate_data(
   config = config,
@@ -176,7 +179,7 @@ if (use_parallel) {
 }
 
 # ============================================================
-# Calibrate, preprocess, integrate (sampler seed)
+# Calibrate, preprocess, integrate
 # ============================================================
 set.seed(sampler_seed)
 
@@ -191,10 +194,22 @@ model <- tryCatch(
 )
 
 # ============================================================
+# Resolve output path
+#   slurm: <sim_dir>/iterations/iter_XXXX/model.rds
+#   test:  <sim_dir>/model.rds
+# ============================================================
+if (exec_mode == "test") {
+  out_dir <- sim_dir
+  out_path <- path(out_dir, "model.rds")
+} else {
+  out_dir <- path(sim_dir, "iterations", iter_id)
+  out_path <- path(out_dir, "model.rds")
+}
+
+dir_create(out_dir, recurse = TRUE)
+
+# ============================================================
 # Save model or error record
-#
-# test:  overwrite test_iteration/model/model.rds
-# slurm: write to iterations/iter_XXXX/model.rds
 # ============================================================
 if (inherits(model, "error")) {
   error_record <- list(
@@ -207,29 +222,13 @@ if (inherits(model, "error")) {
     call = deparse(conditionCall(model))
   )
 
-  error_path <- if (exec_mode == "test") {
-    path(sim_dir, "model", "error.rds")
-  } else {
-    iter_dir <- path(sim_dir, "iterations", iter_id)
-    dir_create(iter_dir, recurse = TRUE)
-    path(iter_dir, "error.rds")
-  }
-
+  error_path <- path(out_dir, "error.rds")
   saveRDS(error_record, error_path)
   message("❌ Iteration failed: ", conditionMessage(model))
   message("   Error record saved: ", error_path)
   quit(status = 1L, save = "no")
 }
 
-model_out_path <- if (exec_mode == "test") {
-  path(sim_dir, "model", "model.rds") # overwrite build output
-} else {
-  iter_dir <- path(sim_dir, "iterations", iter_id)
-  dir_create(iter_dir, recurse = TRUE)
-  path(iter_dir, "model.rds")
-}
-
-saveRDS(model, model_out_path)
-message("💾 Model saved: ", model_out_path)
-
+saveRDS(model, out_path)
+message("💾 Model saved: ", out_path)
 message("✅ Iteration complete: ", sim_id, " / ", iter_id)

@@ -1,6 +1,5 @@
-# Experiment results
-experiments/*
-!experiments/README.md
+# Logs
+logs/*
 
 # Developer tests
 dev/

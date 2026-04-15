@@ -18,7 +18,7 @@ make_estimand <- function(config) {
   param_dim <- config$parameter$param_dim
   J <- param_dim + 1
 
-  estimand_spec(
+  likelyr::estimand_spec(
     psi_fn = psi_fn,
     psi_jac = psi_jac,
     psi_lower = 1 / J,

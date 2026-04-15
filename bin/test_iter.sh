@@ -2,24 +2,23 @@
 set -euo pipefail
 
 # ============================================================
-# test_sim.sh
+# test_iter.sh
 #
-# Local test harness for a single simulation.
+# Local test harness for a single simulation iteration.
 #
 # Orchestrates three steps:
-#   1. R/test_iter.R    — applies test: overrides, writes test_sim.yml
-#   2. R/build_model_spec.R — builds model spec from test_sim.yml
-#   3. R/run_iter.R     — runs one iteration using the test model
+#   1. R/test_iter.R        — applies test: overrides, writes test_iter.yml
+#   2. R/build_model_spec.R — builds model spec from test_iter.yml
+#   3. R/run_iter.R         — runs one iteration using the test model
 #
 # Output structure:
-#   sim_XX/
-#     test_iteration/
-#       test_sim.yml        — sim config with test overrides applied
-#       model/model.rds     — model built from test config
-#       model.rds           — integrated model from the test run
+#   <exp_dir>/sim_XX/iterations/test_iter/
+#     test_iter.yml          — sim config with test overrides applied
+#     model/model.rds       — model built from test config
+#     model.rds             — integrated model from the test run
 #
 # Usage:
-#   bash bin/test_sim.sh <path/to/sim_XX/sim_XX.yml>
+#   bash bin/test_iter.sh <path/to/config/.../sim_XX.yml>
 # ============================================================
 
 # ===============================
@@ -43,7 +42,7 @@ export NUMEXPR_NUM_THREADS=1
 # ===============================
 if [[ $# -ne 1 ]]; then
   echo "❌ ERROR: Invalid arguments."
-  echo "Usage: $0 <path/to/sim_XX/sim_XX.yml>"
+  echo "Usage: $0 <path/to/sim_XX.yml>"
   exit 1
 fi
 
@@ -61,16 +60,31 @@ fi
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-SIM_DIR="$(dirname "$SIM_YML")"
-SIM_ID="$(basename "$SIM_DIR")"
-TEST_DIR="${SIM_DIR}/test_iteration"
-TEST_YML="${TEST_DIR}/test_sim.yml"
+# ===============================
+# Read exp_dir and sim_id from yaml
+# ===============================
+EXP_DIR="$(grep -m1 '^\s*exp_dir:' "$SIM_YML" | sed 's/.*exp_dir:\s*//' | tr -d '[:space:]"')"
+SIM_ID="$(grep -m1 '^\s*sim_id:' "$SIM_YML" | sed 's/.*sim_id:\s*//' | tr -d '[:space:]"')"
 
-echo "🧪 Test simulation: ${SIM_ID}"
-echo "📁 PROJECT_ROOT:    ${PROJECT_ROOT}"
+if [[ -z "$EXP_DIR" ]]; then
+  echo "❌ ERROR: experiment\$exp_dir missing or unparseable in $SIM_YML"
+  exit 1
+fi
+
+if [[ -z "$SIM_ID" ]]; then
+  echo "❌ ERROR: simulation\$sim_id missing or unparseable in $SIM_YML"
+  exit 1
+fi
+
+TEST_DIR="${EXP_DIR}/${SIM_ID}/iterations/test_iter"
+TEST_YML="${TEST_DIR}/test_iter.yml"
+
+echo "🧪 Test iteration: ${SIM_ID}"
+echo "📁 PROJECT_ROOT:   ${PROJECT_ROOT}"
+echo "📂 Output dir:     ${TEST_DIR}"
 
 # ===============================
-# Step 1: Create test_sim.yml
+# Step 1: Create test_iter.yml
 # ===============================
 echo ""
 echo "── Step 1: Applying test overrides ──────────────────────"
@@ -91,10 +105,13 @@ echo ""
 echo "── Step 3: Running test iteration ───────────────────────"
 
 export LIKELYR_EXEC_MODE=test
-export LIKELYR_SIM_DIR="$TEST_DIR"
 export SLURM_CPUS_PER_TASK="${SLURM_CPUS_PER_TASK:-1}"
 
 Rscript R/run_iter.R "$TEST_YML"
 
 echo ""
-echo "✅ Test simulation complete: ${TEST_DIR}"
+echo "✅ Test iteration complete: ${TEST_DIR}"
+
+# Clean up uncalibrated model — same as production analyze_sim.R
+rm -rf "${TEST_DIR}/model"
+echo "✔ Removed uncalibrated model dir"

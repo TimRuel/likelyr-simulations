@@ -132,16 +132,20 @@ make_traversal <- function(config) {
     )
   }
 
-  traversal_spec(
+  likelyr::traversal_spec(
     increment = cfg$increment,
     traversal_method = cfg$traversal_method %||% "topdown",
     mode_locator_fn = simpson_mode_locator_fn,
     confidence_levels = cfg$confidence_levels,
+    cutoff_buffer = cfg$cutoff_buffer %||% 1.5,
     n_adjacent = cfg$n_adjacent %||% 3L,
     max_mode_shifts = cfg$max_mode_shifts %||% 20L,
     k_recent = cfg$k_recent %||% 3L,
     drop_multiplier = cfg$drop_multiplier %||% 2.0,
-    max_drop_fraction = cfg$max_drop_fraction %||% 0.25,
+    cap_multiplier = cfg$cap_multiplier %||% 10.0,
+    mode_gap_multiplier = cfg$mode_gap_multiplier %||% 1.0,
+    extend_to_lower = cfg$extend_to_lower %||% FALSE,
+    extend_to_upper = cfg$extend_to_upper %||% FALSE,
     name = "Branch traversal strategy"
   )
 }

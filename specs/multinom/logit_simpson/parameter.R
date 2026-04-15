@@ -151,7 +151,7 @@ make_parameter <- function(config) {
 
   eta_0 <- generate_eta_0(param_cfg)
 
-  parameter_spec(
+  likelyr::parameter_spec(
     name = "Multinomial logits",
     param_mle_fn = eta_mle_fn,
     param_0 = eta_0,

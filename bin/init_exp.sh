@@ -6,12 +6,10 @@ set -euo pipefail
 #
 # Contract:
 #   • Accepts <path/to/exp_vX.yml> (from config/)
-#   • Reads version from experiment$version in the YAML via grep
-#   • Discovers sim_*/sim_*.yml already written to experiments/
-#     by expand_design.R
-#   • Builds model specs for each simulation
-#   • Writes ONLY to experiments/
-#   • Config directory is never touched
+#   • Reads exp_dir from experiment$exp_dir in the YAML
+#   • Discovers sim_*.yml from config/<path>/exp_vX/ (written by expand_design.R)
+#   • Builds model specs for each simulation, saving to exp_dir/sim_XX/model/
+#   • Config directory is never written to
 # ============================================================
 
 # ===============================
@@ -54,31 +52,23 @@ echo "📁 PROJECT_ROOT resolved to: $PROJECT_ROOT"
 echo "🧪 Using experiment config: $EXP_YML"
 
 # ===============================
-# Read version directly from YAML via grep
+# Read paths directly from YAML
 # ===============================
 EXP_VERSION="$(grep -m1 '^\s*version:' "$EXP_YML" | sed 's/.*version:\s*//' | tr -d '[:space:]"')"
+EXP_DIR="$(grep -m1 '^\s*exp_dir:' "$EXP_YML" | sed 's/.*exp_dir:\s*//' | tr -d '[:space:]"')"
 
 if [[ -z "$EXP_VERSION" ]]; then
   echo "❌ ERROR: experiment\$version missing or unparseable in $EXP_YML"
   exit 1
 fi
 
-# ===============================
-# Resolve experiment paths
-# ===============================
-EXP_CFG_DIR="$(dirname "$EXP_YML")"
-EXPERIMENT_REL="$(realpath --relative-to=config "$EXP_CFG_DIR")"
-
-if [[ -z "$EXPERIMENT_REL" || "$EXPERIMENT_REL" == "." ]]; then
-  echo "❌ ERROR: experiment config must live under config/<path>/"
+if [[ -z "$EXP_DIR" ]]; then
+  echo "❌ ERROR: experiment\$exp_dir missing or unparseable in $EXP_YML"
   exit 1
 fi
 
-EXP_DIR="experiments/${EXPERIMENT_REL}/${EXP_VERSION}"
-
-echo "🧪 Experiment: ${EXPERIMENT_REL}"
-echo "🔖 Version:    ${EXP_VERSION}"
-echo "📂 Runtime dir: ${EXP_DIR}"
+echo "🔖 Version:     ${EXP_VERSION}"
+echo "📂 Exp dir:     ${EXP_DIR}"
 
 # ===============================
 # Validate experiment directory
@@ -95,18 +85,19 @@ mkdir -p "$EXP_DIR/analysis"
 echo "✅ Experiment directory confirmed"
 
 # ===============================
-# Discover simulation directories
+# Discover simulation yamls from config subfolder
 # ===============================
-SIM_DIRS=( "$EXP_DIR"/sim_*/ )
+CONFIG_SIM_DIR="$(dirname "$EXP_YML")"
+SIM_YMLS=( "$CONFIG_SIM_DIR"/sim_*.yml )
 
-if [[ ! -d "${SIM_DIRS[0]}" ]]; then
-  echo "❌ ERROR: No sim_* directories found in:"
-  echo "    $EXP_DIR"
+if [[ ! -f "${SIM_YMLS[0]}" ]]; then
+  echo "❌ ERROR: No sim_*.yml files found in:"
+  echo "    $CONFIG_SIM_DIR"
   echo "Did you run: make gen ?"
   exit 1
 fi
 
-echo "🔢 Found ${#SIM_DIRS[@]} simulation(s)"
+echo "🔢 Found ${#SIM_YMLS[@]} simulation(s)"
 
 # ===============================
 # Build model spec for each simulation
@@ -118,19 +109,13 @@ if [[ ! -f "$RSCRIPT_PATH" ]]; then
   exit 1
 fi
 
-for SIM_DIR in "${SIM_DIRS[@]}"; do
-  SIM_ID="$(basename "$SIM_DIR")"
-  SIM_YML="${SIM_DIR}${SIM_ID}.yml"
+for SIM_YML in "${SIM_YMLS[@]}"; do
+  SIM_ID="$(basename "$SIM_YML" .yml)"
+  SIM_DIR="${EXP_DIR}/${SIM_ID}/"
   MODEL_FILE="${SIM_DIR}model/model.rds"
 
   echo "────────────────────────────────────────"
   echo "🧩 Setting up simulation: ${SIM_ID}"
-
-  if [[ ! -f "$SIM_YML" ]]; then
-    echo "❌ ERROR: Simulation config not found:"
-    echo "    $SIM_YML"
-    exit 1
-  fi
 
   if [[ -f "$MODEL_FILE" ]]; then
     echo "⏭  Skipping ${SIM_ID} — model already built"

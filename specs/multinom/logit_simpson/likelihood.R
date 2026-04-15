@@ -78,7 +78,7 @@ make_likelihood <- function(config) {
     stop("Config must contain a 'likelihood' section.", call. = FALSE)
   }
 
-  likelihood_spec(
+  likelyr::likelihood_spec(
     name = cfg$name %||% "Multinomial likelihood (logit parameterization)",
     loglik = loglik,
     E_loglik = E_loglik,

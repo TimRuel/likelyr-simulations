@@ -232,6 +232,12 @@ saveRDS(
   path(analysis_dir, "sim_interval_metrics.rds")
 )
 
+tmp <- tempfile()
+tryCatch(
+  saveRDS(sim_interval_df, tmp),
+  error = function(e) message("Serialization failed: ", e$message)
+)
+
 message("✔ Analysis complete for ", sim_id)
 message("✔ Saved:")
 message("  • analysis/sim_point_metrics.rds")

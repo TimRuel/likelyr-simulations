@@ -9,9 +9,17 @@
 #   config/<path>/exp_vX.yml
 #
 # Writes to:
-#   experiments/<path>/<version>/sim_01/sim_01.yml
-#   experiments/<path>/<version>/sim_02/sim_02.yml
+#   config/<path>/exp_vX/sim_01.yml
+#   config/<path>/exp_vX/sim_02.yml
 #   ...
+#
+# Also creates empty simulation data directories:
+#   <experiment$exp_dir>/sim_01/
+#   <experiment$exp_dir>/sim_02/
+#   ...
+#
+# The output directory is read directly from experiment$exp_dir in the
+# config YAML — no path derivation from config/ location.
 #
 # The top-level experiment: block is automatically propagated into each sim
 # yaml's experiment: section — it does not need to be repeated in
@@ -22,7 +30,8 @@
 # test mode, without affecting production iterations.
 #
 # Each generated sim yaml has the following top-level structure (in order):
-#   experiment:   version, distribution, model, estimand, spec_path, seed_base
+#   experiment:   version, distribution, model, estimand, specs_dir,
+#                 logs_dir, exp_dir, seed_base
 #   simulation:   sim_id, seed_base, iterations
 #   design:       design_type, overrides
 #   test:         dotted-path overrides applied only in test mode (optional)
@@ -65,8 +74,6 @@ exp_yml <- fs::path_abs(args[[1]])
 if (!fs::file_exists(exp_yml)) {
   stop("Experiment config not found: ", exp_yml, call. = FALSE)
 }
-
-exp_dir <- fs::path_dir(exp_yml)
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -190,17 +197,28 @@ base <- exp_cfg$base_simulation
 
 # Experiment metadata
 exp_meta <- exp_cfg$experiment %||% list()
-exp_name <- exp_meta$name %||% exp_meta$id %||% fs::path_file(exp_dir)
+exp_name <- exp_meta$name %||% exp_meta$id %||% "experiment"
 exp_version <- exp_meta$version
 
 if (is.null(exp_version) || !nzchar(exp_version)) {
   stop("experiment$version must be defined (e.g., 'exp_v1').", call. = FALSE)
 }
 
-sim_experiment_block <- exp_meta[setdiff(names(exp_meta), "name")]
+# Read output directory directly from config
+exp_run_dir <- exp_meta$exp_dir
 
-exp_rel <- fs::path_rel(exp_dir, start = "config")
-exp_run_dir <- fs::path("experiments", exp_rel, exp_version)
+if (is.null(exp_run_dir) || !nzchar(exp_run_dir)) {
+  stop(
+    "experiment$exp_dir must be defined with the full path to the results directory.",
+    call. = FALSE
+  )
+}
+
+# Sim yamls are written to the same directory as the exp yaml
+config_sim_dir <- fs::path_dir(exp_yml)
+
+# Propagate full experiment block into each sim yaml
+sim_experiment_block <- exp_meta[setdiff(names(exp_meta), "name")]
 
 # Test overrides block (optional) — copied verbatim to each sim yaml
 test_block <- exp_cfg$test %||% NULL
@@ -270,33 +288,34 @@ if (!is.logical(overwrite) || length(overwrite) != 1L) {
   stop("design$overwrite must be TRUE/FALSE.", call. = FALSE)
 }
 
-existing_sim_dirs <- if (fs::dir_exists(exp_run_dir)) {
+existing_sim_ymls <- if (fs::dir_exists(config_sim_dir)) {
   fs::dir_ls(
-    exp_run_dir,
-    type = "directory",
-    regexp = "sim_\\d+$",
+    config_sim_dir,
+    type = "file",
+    regexp = "sim_\\d+\\.yml$",
     fail = FALSE
   )
 } else {
   character(0)
 }
 
-if (length(existing_sim_dirs) > 0L && !overwrite) {
+if (length(existing_sim_ymls) > 0L && !overwrite) {
   stop(
-    "sim_* directories already exist in ",
-    exp_run_dir,
+    "sim_*.yml files already exist in ",
+    config_sim_dir,
     " and design$overwrite is FALSE.",
     call. = FALSE
   )
 }
-if (length(existing_sim_dirs) > 0L && overwrite) {
-  fs::dir_delete(existing_sim_dirs)
+if (length(existing_sim_ymls) > 0L && overwrite) {
+  fs::file_delete(existing_sim_ymls)
 }
 
 message("▶ Expanding design into ", length(points), " simulation config(s)")
 message("   Experiment: ", exp_name, " (", exp_version, ")")
 message("   Design type: ", design_type)
-message("   Output dir:  ", exp_run_dir)
+message("   Sim yamls:   ", config_sim_dir)
+message("   Data dir:    ", exp_run_dir)
 if (!is.null(test_block)) {
   message("   Test overrides: ", length(test_block), " field(s)")
 }
@@ -338,7 +357,6 @@ for (i in seq_along(points)) {
     overrides = lapply(pt, normalize_scalar)
   )
 
-  # Bake in test overrides if present
   if (!is.null(test_block)) {
     out$test <- test_block
   }
@@ -349,7 +367,9 @@ for (i in seq_along(points)) {
 
   sim_out_dir <- fs::path(exp_run_dir, sim_id)
   fs::dir_create(sim_out_dir, recurse = TRUE)
-  yaml::write_yaml(out, fs::path(sim_out_dir, paste0(sim_id, ".yml")))
+  fs::dir_create(config_sim_dir, recurse = TRUE)
+  yaml::write_yaml(out, fs::path(config_sim_dir, paste0(sim_id, ".yml")))
 }
 
-message("✔ Done. Wrote sim configs to: ", exp_run_dir)
+message("✔ Done. Wrote sim yamls to: ", config_sim_dir)
+message("        Created data dirs in: ", exp_run_dir)

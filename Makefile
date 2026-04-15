@@ -14,7 +14,6 @@ endif
 # -------------------------------------------------
 ROOT            := $(shell pwd)
 CONFIG_DIR      := config
-EXPERIMENTS_DIR := experiments
 R_DIR           := R
 BIN_DIR         := bin
 
@@ -97,7 +96,7 @@ endif
 # -------------------------------------------------
 analyze-sim:
 ifndef SIM_CONFIG
-	$(error SIM_CONFIG must be set, e.g. SIM_CONFIG=experiments/<path>/<version>/sim_XX/sim_XX.yml)
+	$(error SIM_CONFIG must be set, e.g. SIM_CONFIG=<exp_dir>/sim_XX/sim_XX.yml)
 endif
 	bash $(BIN_DIR)/analyze_sim.sh $(SIM_CONFIG)
 
@@ -111,16 +110,16 @@ endif
 	bash $(BIN_DIR)/analyze_exp.sh $(EXP_CONFIG)
 
 # -------------------------------------------------
-# Test single simulation locally
-# Writes test_sim.yml, builds test model, runs iteration.
-# All output saved to <sim>/test_iteration/
+# Test single iteration locally
+# Writes test_iter.yml, builds test model, runs iteration.
+# All output saved to <sim>/iterations/test_iter/
 # Requires: make setup must have been run first.
 # -------------------------------------------------
-test-sim:
+test-iter:
 ifndef SIM_CONFIG
-	$(error SIM_CONFIG must be set, e.g. SIM_CONFIG=experiments/<path>/<version>/sim_XX/sim_XX.yml)
+	$(error SIM_CONFIG must be set, e.g. SIM_CONFIG=<exp_dir>/sim_XX.yml)
 endif
-	bash $(BIN_DIR)/test_sim.sh $(SIM_CONFIG)
+	bash $(BIN_DIR)/test_iter.sh $(SIM_CONFIG)
 
 # -------------------------------------------------
 # Dry run (no side effects, predictive)
@@ -133,14 +132,16 @@ endif
 	@echo ""
 	@echo "Experiment config: $(EXP_CONFIG)"
 	@echo ""
+	@echo "Paths are read directly from the config file (exp_dir, logs_dir, specs_dir)."
+	@echo ""
 	@echo "Steps that would run:"
 	@echo "  1. bash $(BIN_DIR)/expand_design.sh $(EXP_CONFIG)"
 	@echo "  2. bash $(BIN_DIR)/init_exp.sh $(EXP_CONFIG)"
 	@echo "  3. bash $(BIN_DIR)/submit_exp.sh $(EXP_CONFIG)"
 	@echo ""
 	@echo "To analyze after runs complete:"
-	@echo "  make analyze-sim SIM_CONFIG=experiments/<path>/<version>/sim_XX/sim_XX.yml"
-	@echo "  make analyze-exp EXP_CONFIG=config/multinom/logit_simpson/exp_v1.yml"
+	@echo "  make analyze-sim SIM_CONFIG=<exp_dir>/sim_XX/sim_XX.yml"
+	@echo "  make analyze-exp EXP_CONFIG=$(EXP_CONFIG)"
 	@echo ""
 	@echo "✔ Dry run complete"
 
