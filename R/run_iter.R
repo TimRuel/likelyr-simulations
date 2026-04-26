@@ -9,12 +9,12 @@
 #       LIKELYR_EXEC_MODE = "slurm" | "test"
 #   • Input:
 #       slurm: <path/to/config/.../sim_XX.yml>
-#       test:  <path/to/.../test_iter/test_sim.yml>
+#       test:  <path/to/.../test_sim/test_sim.yml>
 #   • Derives sim_dir from experiment$exp_dir + simulation$sim_id
 #     in both modes — no path derivation from yaml location
 #   • Output:
 #       slurm: <sim_dir>/iterations/iter_XXXX/model.rds
-#       test:  <sim_dir>/model.rds
+#       test:  <sim_dir>/iterations/iter_XXXX/model.rds  (same structure)
 #
 # Environment variables:
 #   LIKELYR_EXEC_MODE   "slurm" | "test"   (default: "slurm")
@@ -95,13 +95,15 @@ if (is.null(sim_id) || !nzchar(sim_id)) {
 sim_dir <- path(exp_dir, sim_id)
 
 # ============================================================
-# Resolve iteration index and output directory
+# Resolve iteration index and iter_id
+# In test mode SLURM_ARRAY_TASK_ID is set by test_sim.sh (default 0).
+# In slurm mode it is set by the Slurm scheduler.
 # ============================================================
 if (exec_mode == "test") {
-  iter_id <- "test_iter"
-  iter_index <- 1L
+  iter_index <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID", "0")) + 1L
+  iter_id <- sprintf("iter_%04d", iter_index)
 } else {
-  iter_index <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID", NA)) + 1L
+  iter_index <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID", NA))
   if (is.na(iter_index) || iter_index < 1L) {
     stop("SLURM_ARRAY_TASK_ID not set or invalid.", call. = FALSE)
   }
@@ -194,17 +196,11 @@ model <- tryCatch(
 )
 
 # ============================================================
-# Resolve output path
-#   slurm: <sim_dir>/iterations/iter_XXXX/model.rds
-#   test:  <sim_dir>/model.rds
+# Resolve output path — same structure in both modes:
+#   <sim_dir>/iterations/iter_XXXX/model.rds
 # ============================================================
-if (exec_mode == "test") {
-  out_dir <- sim_dir
-  out_path <- path(out_dir, "model.rds")
-} else {
-  out_dir <- path(sim_dir, "iterations", iter_id)
-  out_path <- path(out_dir, "model.rds")
-}
+out_dir <- path(sim_dir, "iterations", iter_id)
+out_path <- path(out_dir, "model.rds")
 
 dir_create(out_dir, recurse = TRUE)
 

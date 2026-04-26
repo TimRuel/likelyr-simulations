@@ -144,8 +144,7 @@ make_traversal <- function(config) {
     drop_multiplier = cfg$drop_multiplier %||% 2.0,
     cap_multiplier = cfg$cap_multiplier %||% 10.0,
     mode_gap_multiplier = cfg$mode_gap_multiplier %||% 1.0,
-    extend_to_lower = cfg$extend_to_lower %||% FALSE,
-    extend_to_upper = cfg$extend_to_upper %||% FALSE,
+    interval_buffer = cfg$interval_buffer %||% 1.0,
     name = "Branch traversal strategy"
   )
 }

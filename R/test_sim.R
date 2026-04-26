@@ -1,18 +1,18 @@
 #!/usr/bin/env Rscript
 
 # ============================================================
-# test_iter.R
+# test_sim.R
 #
-# Creates test_iter.yml by applying the test: overrides from
+# Creates test_sim.yml by applying the test: overrides from
 # the sim yaml to a copy of the sim config, then redirecting
 # exp_dir and sim_id so that build_model_spec.R and run_iter.R
-# save outputs under the test_iter directory.
+# save outputs under <exp_dir>/sim_XX/test_sim/.
 #
 # Output:
-#   <exp_dir>/sim_XX/iterations/test_iter/test_iter.yml
+#   <exp_dir>/sim_XX/test_sim/test_sim.yml
 #
 # Usage:
-#   Rscript R/test_iter.R <path/to/config/.../sim_XX.yml>
+#   Rscript R/test_sim.R <path/to/config/.../sim_XX.yml>
 # ============================================================
 
 suppressPackageStartupMessages({
@@ -49,7 +49,7 @@ args <- commandArgs(trailingOnly = TRUE)
 
 if (length(args) != 1L) {
   stop(
-    "Usage: Rscript R/test_iter.R <path/to/sim_XX.yml>",
+    "Usage: Rscript R/test_sim.R <path/to/sim_XX.yml>",
     call. = FALSE
   )
 }
@@ -91,20 +91,20 @@ if (is.null(test_block) || length(test_block) == 0L) {
 }
 
 # ------------------------------------------------------------
-# Redirect exp_dir and sim_id to test_iter location so that
-# build_model_spec.R and run_iter.R save outputs correctly
+# Redirect exp_dir and sim_id so that build_model_spec.R and
+# run_iter.R write into <exp_dir>/test_sim/, mirroring the
+# production sim structure exactly.
 # ------------------------------------------------------------
-iter_dir <- path(exp_dir, sim_id, "iterations")
-config$experiment$exp_dir <- iter_dir
-config$simulation$sim_id <- "test_iter"
+config$experiment$exp_dir <- path(exp_dir, sim_id)
+config$simulation$sim_id <- "test_sim"
 
 # ------------------------------------------------------------
-# Write test_iter.yml into test_iter/
+# Write test_sim.yml inside the test_sim folder
 # ------------------------------------------------------------
-test_dir <- path(iter_dir, "test_iter")
+test_dir <- path(exp_dir, sim_id, "test_sim")
 dir_create(test_dir, recurse = TRUE)
 
-test_yml <- path(test_dir, "test_iter.yml")
+test_yml <- path(test_dir, "test_sim.yml")
 write_yaml(config, test_yml)
 
-message("✔ test_iter.yml written to: ", test_dir)
+message("✔ test_sim.yml written to: ", test_dir)

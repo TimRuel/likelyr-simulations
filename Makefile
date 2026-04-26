@@ -41,6 +41,7 @@ help:
 	@echo ""
 	@echo "Local testing:"
 	@echo "  make test-sim    SIM_CONFIG=..."
+	@echo "  Runs simulation.iterations test iterations locally using test: overrides."
 	@echo "  Note: make setup must be run first to build model specs."
 	@echo ""
 	@echo "Utilities:"
@@ -110,16 +111,18 @@ endif
 	bash $(BIN_DIR)/analyze_exp.sh $(EXP_CONFIG)
 
 # -------------------------------------------------
-# Test single iteration locally
-# Writes test_iter.yml, builds test model, runs iteration.
-# All output saved to <sim>/iterations/test_iter/
+# Test single simulation locally
+# -------------------------------------------------
+# Test simulation locally
+# Applies test: overrides, builds model, runs N iterations.
+# All output saved to <exp_dir>/sim_XX/test_sim/
 # Requires: make setup must have been run first.
 # -------------------------------------------------
-test-iter:
+test-sim:
 ifndef SIM_CONFIG
-	$(error SIM_CONFIG must be set, e.g. SIM_CONFIG=<exp_dir>/sim_XX.yml)
+	$(error SIM_CONFIG must be set, e.g. SIM_CONFIG=<config_dir>/sim_XX.yml)
 endif
-	bash $(BIN_DIR)/test_iter.sh $(SIM_CONFIG)
+	bash $(BIN_DIR)/test_sim.sh $(SIM_CONFIG)
 
 # -------------------------------------------------
 # Dry run (no side effects, predictive)

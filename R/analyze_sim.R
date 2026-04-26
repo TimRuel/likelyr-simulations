@@ -33,16 +33,6 @@ exp_dir <- path_dir(sim_dir)
 exp_id <- path_file(exp_dir)
 
 # ============================================================
-# Anchor project root + utilities
-# ============================================================
-root <- here()
-
-source(
-  file.path(root, "analysis", "utils.R"),
-  local = TRUE
-)
-
-# ============================================================
 # Locate iterations
 # ============================================================
 iter_root <- path(sim_dir, "iterations")
@@ -75,9 +65,6 @@ for (iter_dir in iter_dirs) {
 
   model <- readRDS(model_path)
 
-  # ----------------------------------------------------------
-  # infer + compare (post-processing only)
-  # ----------------------------------------------------------
   model <- tryCatch(
     model |>
       infer() |>
@@ -103,7 +90,7 @@ for (iter_dir in iter_dirs) {
   psi_0 <- unique(point_df$psi_0)[1]
 
   # ----------------------------------------------------------
-  # Point metrics (NO level duplication)
+  # Point metrics
   # ----------------------------------------------------------
   point_metrics <- lapply(
     split(point_df, point_df$pseudolikelihood),
@@ -113,12 +100,10 @@ for (iter_dir in iter_dirs) {
         simulation = sim_id,
         iteration = iter_id,
         pseudolikelihood = d$pseudolikelihood,
-
         psi_hat = d$psi_hat,
         psi_0 = psi_0,
         bias = d$psi_hat - psi_0,
         sq_error = (d$psi_hat - psi_0)^2,
-
         stringsAsFactors = FALSE
       )
     }
@@ -126,34 +111,7 @@ for (iter_dir in iter_dirs) {
     bind_rows()
 
   # ----------------------------------------------------------
-  # Shape diagnostics (point-level)
-  # ----------------------------------------------------------
-  shape_metrics <- lapply(
-    unique(point_df$pseudolikelihood),
-    function(p) {
-      s <- extract_likelihood_shape(model, p)
-      data.frame(
-        experiment = exp_id,
-        simulation = sim_id,
-        iteration = iter_id,
-        pseudolikelihood = p,
-        curvature = s$curvature,
-        width_05 = s$width_05,
-        skewness = s$skewness,
-        stringsAsFactors = FALSE
-      )
-    }
-  ) |>
-    bind_rows()
-
-  point_metrics <- point_metrics |>
-    full_join(
-      shape_metrics,
-      by = c("experiment", "simulation", "iteration", "pseudolikelihood")
-    )
-
-  # ----------------------------------------------------------
-  # Interval metrics (LEVEL-SPECIFIC)
+  # Interval metrics
   # ----------------------------------------------------------
   interval_raw <- attr(interval_df, "interval_estimates_raw") |>
     mutate(pseudolikelihood = tools::toTitleCase(pseudolikelihood))
@@ -167,10 +125,7 @@ for (iter_dir in iter_dirs) {
 
   interval_df2 <- interval_raw |>
     select(pseudolikelihood, level, alpha, lower, upper) |>
-    right_join(
-      interval_df,
-      by = c("pseudolikelihood", "level")
-    ) |>
+    right_join(interval_df, by = c("pseudolikelihood", "level")) |>
     mutate(valid_ci = is.finite(lower) & is.finite(upper))
 
   interval_metrics <- lapply(
@@ -187,30 +142,27 @@ for (iter_dir in iter_dirs) {
         pseudolikelihood = d$pseudolikelihood,
         level = d$level,
         alpha = d$alpha,
-
         valid_ci = d$valid_ci,
         ci_length = ifelse(d$valid_ci, d$upper - d$lower, NA),
+        lower = d$lower,
+        upper = d$upper,
         covered = ifelse(
           d$valid_ci,
           psi_0 >= d$lower & psi_0 <= d$upper,
           NA
         ),
-
         stringsAsFactors = FALSE
       )
     }
   ) |>
     bind_rows()
 
-  # ----------------------------------------------------------
-  # Collect
-  # ----------------------------------------------------------
   point_results[[length(point_results) + 1]] <- point_metrics
   interval_results[[length(interval_results) + 1]] <- interval_metrics
 }
 
 # ============================================================
-# Bind + save
+# Bind
 # ============================================================
 sim_point_df <- bind_rows(point_results)
 sim_interval_df <- bind_rows(interval_results)
@@ -219,26 +171,58 @@ if (nrow(sim_point_df) == 0L && nrow(sim_interval_df) == 0L) {
   stop("No valid iteration results processed for ", sim_id, call. = FALSE)
 }
 
+# ============================================================
+# Invalid CI index
+#
+# For each pseudolikelihood x level combo, records the iteration
+# ids where the CI was invalid (lower or upper endpoint is NA),
+# along with which endpoint(s) are missing.
+# ============================================================
+invalid_ci_index <- sim_interval_df |>
+  filter(!valid_ci) |>
+  mutate(
+    missing_lower = !is.finite(lower),
+    missing_upper = !is.finite(upper)
+  ) |>
+  select(
+    pseudolikelihood,
+    level,
+    alpha,
+    iteration,
+    missing_lower,
+    missing_upper
+  ) |>
+  arrange(pseudolikelihood, level, iteration)
+
+# ============================================================
+# Save
+# ============================================================
 analysis_dir <- path(sim_dir, "analysis")
 dir_create(analysis_dir)
 
-saveRDS(
-  sim_point_df,
-  path(analysis_dir, "sim_point_metrics.rds")
-)
+# Drop lower/upper from public interval metrics
+sim_interval_df <- sim_interval_df |>
+  select(-lower, -upper)
 
-saveRDS(
-  sim_interval_df,
-  path(analysis_dir, "sim_interval_metrics.rds")
-)
-
-tmp <- tempfile()
-tryCatch(
-  saveRDS(sim_interval_df, tmp),
-  error = function(e) message("Serialization failed: ", e$message)
-)
+saveRDS(sim_point_df, path(analysis_dir, "sim_point_metrics.rds"))
+saveRDS(sim_interval_df, path(analysis_dir, "sim_interval_metrics.rds"))
+saveRDS(invalid_ci_index, path(analysis_dir, "invalid_ci_index.rds"))
 
 message("✔ Analysis complete for ", sim_id)
 message("✔ Saved:")
 message("  • analysis/sim_point_metrics.rds")
 message("  • analysis/sim_interval_metrics.rds")
+message(
+  "  • analysis/invalid_ci_index.rds  (",
+  nrow(invalid_ci_index),
+  " invalid CI records)"
+)
+
+# ============================================================
+# Clean up uncalibrated model
+# ============================================================
+model_dir <- path(sim_dir, "model")
+if (dir_exists(model_dir)) {
+  dir_delete(model_dir)
+  message("✔ Removed uncalibrated model: ", model_dir)
+}

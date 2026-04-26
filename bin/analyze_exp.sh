@@ -6,7 +6,8 @@ set -euo pipefail
 #
 # Contract:
 #   • Accepts <path/to/exp_vX.yml> (from config/)
-#   • Reads version to derive EXP_RUN_DIR
+#   • Reads exp_dir from the yaml for data location
+#   • Discovers sim_*.yml from the same config directory
 #   • Calls bin/analyze_sim.sh for each simulation
 #   • Skips simulations with no iterations directory or no
 #     completed iter_* folders
@@ -43,18 +44,14 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 # ===============================
-# Read version and derive EXP_RUN_DIR
+# Read exp_dir from yaml
 # ===============================
-EXP_VERSION="$(grep -m1 '^\s*version:' "$EXP_YML" | sed 's/.*version:\s*//' | tr -d '[:space:]"')"
+EXP_RUN_DIR="$(grep -m1 '^\s*exp_dir:' "$EXP_YML" | sed 's/.*exp_dir:\s*//' | tr -d '[:space:]"')"
 
-if [[ -z "$EXP_VERSION" ]]; then
-  echo "❌ experiment\$version missing or unparseable in $EXP_YML"
+if [[ -z "$EXP_RUN_DIR" ]]; then
+  echo "❌ experiment\$exp_dir missing or unparseable in $EXP_YML"
   exit 1
 fi
-
-EXP_CFG_DIR="$(dirname "$EXP_YML")"
-EXPERIMENT_REL="$(realpath --relative-to=config "$EXP_CFG_DIR")"
-EXP_RUN_DIR="experiments/${EXPERIMENT_REL}/${EXP_VERSION}"
 
 if [[ ! -d "$EXP_RUN_DIR" ]]; then
   echo "❌ Experiment run directory not found: $EXP_RUN_DIR"
@@ -64,21 +61,25 @@ fi
 echo "📂 Analyzing experiment: $EXP_RUN_DIR"
 
 # ===============================
+# Discover sim yamls from config directory
+# ===============================
+CONFIG_SIM_DIR="$(dirname "$EXP_YML")"
+SIM_YMLS=( "$CONFIG_SIM_DIR"/sim_*.yml )
+
+if [[ ! -f "${SIM_YMLS[0]}" ]]; then
+  echo "❌ No sim_*.yml files found in: $CONFIG_SIM_DIR"
+  exit 1
+fi
+
+# ===============================
 # Analyze each simulation
 # ===============================
-for SIM_DIR in "$EXP_RUN_DIR"/sim_*/; do
-  [[ -d "$SIM_DIR" ]] || continue
-
-  SIM_ID="$(basename "$SIM_DIR")"
-  SIM_YML="${SIM_DIR}${SIM_ID}.yml"
-
-  if [[ ! -f "$SIM_YML" ]]; then
-    echo "❌ Simulation config not found: $SIM_YML"
-    exit 1
-  fi
+for SIM_YML in "${SIM_YMLS[@]}"; do
+  SIM_ID="$(basename "$SIM_YML" .yml)"
+  SIM_DIR="${EXP_RUN_DIR}/${SIM_ID}"
 
   # Skip if no iterations directory
-  ITER_DIR="${SIM_DIR}iterations"
+  ITER_DIR="${SIM_DIR}/iterations"
   if [[ ! -d "$ITER_DIR" ]]; then
     echo "⏭  Skipping ${SIM_ID} — no iterations directory"
     continue

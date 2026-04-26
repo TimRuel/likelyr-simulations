@@ -2,23 +2,29 @@
 set -euo pipefail
 
 # ============================================================
-# test_iter.sh
+# test_sim.sh
 #
-# Local test harness for a single simulation iteration.
+# Local test harness for a simulation — runs multiple iterations
+# sequentially using the test: overrides from the sim config.
 #
-# Orchestrates three steps:
-#   1. R/test_iter.R        — applies test: overrides, writes test_iter.yml
-#   2. R/build_model_spec.R — builds model spec from test_iter.yml
-#   3. R/run_iter.R         — runs one iteration using the test model
+# Orchestrates:
+#   1. R/test_sim.R         — applies test: overrides, writes test_sim.yml
+#   2. R/build_model_spec.R — builds model spec from test_sim.yml
+#   3. R/run_iter.R         — runs each iteration (loop)
 #
 # Output structure:
-#   <exp_dir>/sim_XX/iterations/test_iter/
-#     test_iter.yml          — sim config with test overrides applied
-#     model/model.rds       — model built from test config
-#     model.rds             — integrated model from the test run
+#   <exp_dir>/sim_XX/test_sim/
+#     test_sim.yml           — sim config with test overrides applied
+#     model/model.rds        — model built from test config (removed after)
+#     iter_0001/model.rds
+#     iter_0002/model.rds
+#     ...
+#
+# The number of iterations is read from simulation.iterations in
+# the generated test_sim.yml (after test: overrides are applied).
 #
 # Usage:
-#   bash bin/test_iter.sh <path/to/config/.../sim_XX.yml>
+#   bash bin/test_sim.sh <path/to/config/.../sim_XX.yml>
 # ============================================================
 
 # ===============================
@@ -76,22 +82,34 @@ if [[ -z "$SIM_ID" ]]; then
   exit 1
 fi
 
-TEST_DIR="${EXP_DIR}/${SIM_ID}/iterations/test_iter"
-TEST_YML="${TEST_DIR}/test_iter.yml"
+TEST_DIR="${EXP_DIR}/${SIM_ID}/test_sim"
+TEST_YML="${TEST_DIR}/test_sim.yml"
 
-echo "🧪 Test iteration: ${SIM_ID}"
-echo "📁 PROJECT_ROOT:   ${PROJECT_ROOT}"
-echo "📂 Output dir:     ${TEST_DIR}"
+echo "🧪 Test simulation: ${SIM_ID}"
+echo "📁 PROJECT_ROOT:    ${PROJECT_ROOT}"
+echo "📂 Output dir:      ${TEST_DIR}"
 
 # ===============================
-# Step 1: Create test_iter.yml
+# Step 1: Create test_sim.yml
 # ===============================
 echo ""
 echo "── Step 1: Applying test overrides ──────────────────────"
-Rscript R/test_iter.R "$SIM_YML"
+Rscript R/test_sim.R "$SIM_YML"
 
 # ===============================
-# Step 2: Build model spec from test config
+# Read number of iterations from generated test_sim.yml
+# ===============================
+N_ITER="$(grep -m1 '^\s*iterations:' "$TEST_YML" | sed 's/.*iterations:\s*//' | tr -d '[:space:]"')"
+
+if [[ -z "$N_ITER" || ! "$N_ITER" =~ ^[0-9]+$ || "$N_ITER" -lt 1 ]]; then
+  echo "❌ ERROR: simulation\$iterations missing or invalid in $TEST_YML"
+  exit 1
+fi
+
+echo "🔁 Iterations: ${N_ITER}"
+
+# ===============================
+# Step 2: Build model spec
 # ===============================
 echo ""
 echo "── Step 2: Building test model spec ─────────────────────"
@@ -99,19 +117,21 @@ mkdir -p "${TEST_DIR}/model"
 Rscript R/build_model_spec.R "$TEST_YML"
 
 # ===============================
-# Step 3: Run iteration
+# Step 3: Run iterations
 # ===============================
 echo ""
-echo "── Step 3: Running test iteration ───────────────────────"
+echo "── Step 3: Running ${N_ITER} test iteration(s) ──────────"
 
-export LIKELYR_EXEC_MODE=test
-export SLURM_CPUS_PER_TASK="${SLURM_CPUS_PER_TASK:-1}"
-
-Rscript R/run_iter.R "$TEST_YML"
+for ((i = 0; i < N_ITER; i++)); do
+  ITER_LABEL="$(printf 'iter_%04d' $((i + 1)))"
+  echo ""
+  echo "  ▶ ${ITER_LABEL} ($((i + 1))/${N_ITER})"
+  SLURM_ARRAY_TASK_ID="${i}" LIKELYR_EXEC_MODE=test Rscript R/run_iter.R "$TEST_YML"
+done
 
 echo ""
-echo "✅ Test iteration complete: ${TEST_DIR}"
+echo "✅ Test simulation complete: ${TEST_DIR}"
 
-# Clean up uncalibrated model — same as production analyze_sim.R
+# Clean up uncalibrated model
 rm -rf "${TEST_DIR}/model"
 echo "✔ Removed uncalibrated model dir"

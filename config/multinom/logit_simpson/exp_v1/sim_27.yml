@@ -10,21 +10,22 @@ experiment:
 simulation:
   sim_id: sim_27
   seed_base: 2708000
-  iterations: 1000
+  iterations: 2000
 design:
   design_type: points
   overrides:
-    parameter.param_dim: 14
-    data.n_obs: 90
+    parameter.param_dim: 19
+    data.n_obs: 160
     parameter.index_target_frac: 0.35
 test:
-  sampler.min_branches: 10
-  sampler.branch_buffer: 5
+  simulation.iterations: 2
+  sampler.min_branches: 3
+  sampler.branch_buffer: 0
   data.n_obs: 50
   parameter.param_dim: 9
   parameter.index_target_frac: 0.1
 parameter:
-  param_dim: 14
+  param_dim: 19
   index_target_frac: 0.35
   seed: 2708000
 likelihood:
@@ -48,18 +49,17 @@ traversal:
   drop_multiplier: 10.0
   cap_multiplier: 10.0
   mode_gap_multiplier: 10.0
-  extend_to_lower: yes
-  extend_to_upper: no
+  interval_buffer: 1.2
 solver:
   localsolver: SLSQP
   control:
     xtol_rel: 1.0e-08
     maxeval: 1000
   localtol: 1.0e-06
-  max_retries: 50
+  max_retries: 100
 execution:
   mode: serial
   packages: likelyr
 data:
-  n_obs: 90
+  n_obs: 160
   seed_base: 2728000

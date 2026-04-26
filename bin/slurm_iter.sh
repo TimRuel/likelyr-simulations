@@ -46,14 +46,14 @@ export NUMEXPR_NUM_THREADS=1
 # ===============================
 if [[ $# -ne 1 ]]; then
   echo "❌ ERROR: Missing arguments."
-  echo "Usage: sbatch $0 <path/to/simulation.yml>"
+  echo "Usage: sbatch $0 <path/to/sim_XX.yml>"
   exit 1
 fi
 
 SIM_YML="$1"
 
 if [[ ! -f "$SIM_YML" ]]; then
-  echo "❌ ERROR: simulation.yml not found:"
+  echo "❌ ERROR: sim yaml not found:"
   echo "    $SIM_YML"
   exit 1
 fi
@@ -68,6 +68,24 @@ cd "$PROJECT_ROOT" || {
 }
 
 # ===============================
+# Read exp_dir and sim_id from yaml
+# ===============================
+EXP_DIR="$(grep -m1 '^\s*exp_dir:' "$SIM_YML" | sed 's/.*exp_dir:\s*//' | tr -d '[:space:]"')"
+SIM_ID="$(grep -m1 '^\s*sim_id:' "$SIM_YML" | sed 's/.*sim_id:\s*//' | tr -d '[:space:]"')"
+
+if [[ -z "$EXP_DIR" ]]; then
+  echo "❌ ERROR: experiment\$exp_dir missing or unparseable in $SIM_YML"
+  exit 1
+fi
+
+if [[ -z "$SIM_ID" ]]; then
+  echo "❌ ERROR: simulation\$sim_id missing or unparseable in $SIM_YML"
+  exit 1
+fi
+
+SIM_DIR="${EXP_DIR}/${SIM_ID}"
+
+# ===============================
 # Declare execution mode
 # ===============================
 export LIKELYR_EXEC_MODE=slurm
@@ -75,11 +93,8 @@ export LIKELYR_EXEC_MODE=slurm
 # ===============================
 # Iteration identifiers (logging only)
 # ===============================
-ITER_INDEX=$((SLURM_ARRAY_TASK_ID + 1))
+ITER_INDEX=$SLURM_ARRAY_TASK_ID
 ITER_ID=$(printf "iter_%04d" "$ITER_INDEX")
-
-SIM_DIR="$(dirname "$SIM_YML")"
-SIM_ID="$(basename "$SIM_DIR")"
 
 # ===============================
 # Validate shared simulation model

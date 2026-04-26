@@ -32,6 +32,10 @@ generate_data <- function(config, parameter) {
   counts <- rmultinom(1, n, theta_0) |>
     as.numeric()
 
+  epsilon <- 0.001
+
+  counts <- counts + epsilon * (counts == 0)
+
   data.frame(
     cell = LETTERS[seq_len(J)],
     count = counts,

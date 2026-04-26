@@ -131,7 +131,7 @@ for sim_yml in "${SIM_YMLS[@]}"; do
     if [[ -f "$model_file" ]]; then
       (( n_complete++ )) || true
     else
-      pending_indices+=($((i - 1)))   # 0-indexed for SLURM
+      pending_indices+=("$i")   # 1-indexed to match iter folder names
     fi
   done
 
@@ -147,10 +147,35 @@ for sim_yml in "${SIM_YMLS[@]}"; do
   fi
 
   # --------------------------------------------------
-  # Build SLURM array specification from pending indices
+  # Build SLURM array specification from pending indices.
+  # Uses ranges (e.g. "1-500,502-1000") rather than
+  # comma-separated lists to avoid sbatch pathname length limits.
   # --------------------------------------------------
-  array_spec=$(printf "%s," "${pending_indices[@]}")
-  array_spec="${array_spec%,}"
+  array_spec=""
+  range_start="${pending_indices[0]}"
+  range_end="${pending_indices[0]}"
+
+  for ((k = 1; k < ${#pending_indices[@]}; k++)); do
+    curr="${pending_indices[$k]}"
+    prev="${pending_indices[$((k-1))]}"
+    if [[ "$curr" -eq "$((prev + 1))" ]]; then
+      range_end="$curr"
+    else
+      if [[ "$range_start" -eq "$range_end" ]]; then
+        array_spec="${array_spec:+${array_spec},}${range_start}"
+      else
+        array_spec="${array_spec:+${array_spec},}${range_start}-${range_end}"
+      fi
+      range_start="$curr"
+      range_end="$curr"
+    fi
+  done
+  # Flush final range
+  if [[ "$range_start" -eq "$range_end" ]]; then
+    array_spec="${array_spec:+${array_spec},}${range_start}"
+  else
+    array_spec="${array_spec:+${array_spec},}${range_start}-${range_end}"
+  fi
 
   # --------------------------------------------------
   # Create log directory and submit
@@ -162,8 +187,8 @@ for sim_yml in "${SIM_YMLS[@]}"; do
   job_output="$(
     sbatch \
       --array="${array_spec}" \
-      --output="${log_dir}/iter_%a.out" \
-      --error="${log_dir}/iter_%a.err" \
+      --output="${log_dir}/iter_%04a.out" \
+      --error="${log_dir}/iter_%04a.err" \
       "$SLURM_SCRIPT" \
       "$sim_yml"
   )"
