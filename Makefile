@@ -20,7 +20,7 @@ BIN_DIR         := bin
 # -------------------------------------------------
 # Phony targets
 # -------------------------------------------------
-.PHONY: help gen setup submit experiment analyze-sim analyze-exp status dry-run clean test-sim
+.PHONY: help gen setup submit experiment analyze-sim analyze-exp status dry-run clean test-sim download
 
 # -------------------------------------------------
 # Help
@@ -43,6 +43,11 @@ help:
 	@echo "  make test-sim    SIM_CONFIG=..."
 	@echo "  Runs simulation.iterations test iterations locally using test: overrides."
 	@echo "  Note: make setup must be run first to build model specs."
+	@echo ""
+	@echo "Download from Quest:"
+	@echo "  make download    EXP=multinom/logit_simpson/exp_v1"
+	@echo "  Downloads analysis folders from Quest to local machine."
+	@echo "  Must be run from local machine with Northwestern VPN active."
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make dry-run     EXP_CONFIG=..."
@@ -123,6 +128,21 @@ ifndef SIM_CONFIG
 	$(error SIM_CONFIG must be set, e.g. SIM_CONFIG=<config_dir>/sim_XX.yml)
 endif
 	bash $(BIN_DIR)/test_sim.sh $(SIM_CONFIG)
+
+# -------------------------------------------------
+# Download analysis folders from Quest to local
+#
+# Must be run from local machine with Northwestern VPN active.
+# Requires rsync and SSH access to Quest.
+#
+# Usage:
+#   make download EXP=multinom/logit_simpson/exp_v1
+# -------------------------------------------------
+download:
+ifndef EXP
+	$(error EXP must be set, e.g. make download EXP=multinom/logit_simpson/exp_v1)
+endif
+	bash $(BIN_DIR)/download_analysis.sh "$(EXP)" "$(if $(LOCAL),$(LOCAL),$(EXP))"
 
 # -------------------------------------------------
 # Dry run (no side effects, predictive)

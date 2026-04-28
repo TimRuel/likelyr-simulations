@@ -1,6 +1,9 @@
 # Logs
 logs/*
 
+#Experiments
+experiments/
+
 # Developer tests
 dev/
 
