@@ -20,6 +20,7 @@ softmax_from_eta <- function(eta) {
 generate_data <- function(config, parameter) {
   data_cfg <- config$data
   n <- data_cfg$n_obs
+  epsilon <- data_cfg$epsilon
 
   # param_0 is η₀ (length J-1)
   eta_0 <- parameter$param_0
@@ -31,8 +32,6 @@ generate_data <- function(config, parameter) {
 
   counts <- rmultinom(1, n, theta_0) |>
     as.numeric()
-
-  epsilon <- 0.001
 
   counts <- counts + epsilon * (counts == 0)
 

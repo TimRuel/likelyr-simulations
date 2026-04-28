@@ -10,13 +10,13 @@ experiment:
 simulation:
   sim_id: sim_01
   seed_base: 108000
-  iterations: 1000
+  iterations: 2000
 design:
   design_type: points
   overrides:
-    parameter.param_dim: 4
-    data.n_obs: 10
-    parameter.index_target_frac: 0.1
+    parameter.param_dim: 19
+    data.n_obs: 80
+    parameter.index_target_frac: 0.35
 test:
   simulation.iterations: 2
   sampler.min_branches: 3
@@ -25,8 +25,8 @@ test:
   parameter.param_dim: 9
   parameter.index_target_frac: 0.1
 parameter:
-  param_dim: 4
-  index_target_frac: 0.1
+  param_dim: 19
+  index_target_frac: 0.35
   seed: 108000
 likelihood:
   family: multinomial
@@ -56,10 +56,11 @@ solver:
     xtol_rel: 1.0e-08
     maxeval: 1000
   localtol: 1.0e-06
-  max_retries: 50
+  max_retries: 100
 execution:
   mode: serial
   packages: likelyr
 data:
-  n_obs: 10
+  epsilon: 0.5
+  n_obs: 80
   seed_base: 128000

@@ -19,17 +19,13 @@ test:
 design:
   type: points
   require_existing_paths: true
-  # index_target_frac = f in {0.10, 0.20, 0.35}
-  # psi_0 = 1/J + f * (1 - 1/J)
-  # n_obs = (n/J) * J, n/J in {2, 4, 6}
   points:
-    # J = 5  (param_dim = 4)
-    - parameter.param_dim: 4
-      data.n_obs: 10
-      parameter.index_target_frac: 0.10
+    - parameter.param_dim: 19
+      data.n_obs: 80
+      parameter.index_target_frac: 0.35
 
 base_simulation:
-  iterations: 1000
+  iterations: 2000
 
   parameter:
     param_dim: null          # set per-simulation; varies across design points
@@ -65,11 +61,12 @@ base_simulation:
       xtol_rel: 1.0e-08
       maxeval: 1000
     localtol: 1.0e-06
-    max_retries: 50
+    max_retries: 100
 
   execution:
     mode: serial
     packages: likelyr
 
   data:
+    epsilon: 0.5
     n_obs: null              # set per-simulation; varies across design points

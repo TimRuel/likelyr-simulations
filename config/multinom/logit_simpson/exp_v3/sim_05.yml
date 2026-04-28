@@ -8,14 +8,14 @@ experiment:
   logs_dir: /gpfs/home/tbr0780/likelyr-simulations/logs/multinom/logit_simpson/exp_v3
   exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/logit_simpson/exp_v3
 simulation:
-  sim_id: sim_01
-  seed_base: 108000
+  sim_id: sim_05
+  seed_base: 508000
   iterations: 1100
 design:
   design_type: points
   overrides:
     parameter.param_dim: 4
-    data.n_obs: 20
+    data.n_obs: 30
     parameter.index_target_frac: 0.1
 test:
   simulation.iterations: 2
@@ -27,14 +27,14 @@ test:
 parameter:
   param_dim: 4
   index_target_frac: 0.1
-  seed: 108000
+  seed: 508000
 likelihood:
   family: multinomial
   link: logit
 sampler:
   min_branches: 250
   branch_buffer: 50
-  seed_base: 118000
+  seed_base: 518000
 traversal:
   increment: 0.001
   traversal_method: topdown
@@ -62,5 +62,5 @@ execution:
   packages: likelyr
 data:
   epsilon: 0.5
-  n_obs: 20
-  seed_base: 128000
+  n_obs: 30
+  seed_base: 528000
