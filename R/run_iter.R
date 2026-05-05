@@ -144,9 +144,9 @@ if (is.null(specs_dir) || !nzchar(specs_dir)) {
   stop("experiment$specs_dir must be defined in the sim yaml.", call. = FALSE)
 }
 
-data_spec_env <- load_data_env(specs_dir)
+specs_env <- likelyr:::load_spec_env(specs_dir)
 
-data <- data_spec_env$generate_data(
+data <- specs_env$generate_data(
   config = config,
   parameter = model$parameter
 )
