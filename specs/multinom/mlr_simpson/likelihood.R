@@ -19,9 +19,22 @@
 #' @param J    Number of categories.
 #' @return     n × (J-1) matrix of predicted probabilities (baseline dropped).
 softmax <- function(eta) {
-  exp_eta <- exp(cbind(eta, 0))
-  J <- ncol(exp_eta)
-  (exp_eta / rowSums(exp_eta))[, -J, drop = FALSE]
+  eta_aug <- cbind(eta, 0)
+  row_max <- apply(eta_aug, 1, max)
+  shifted <- eta_aug - row_max
+  exp_eta <- exp(shifted)
+  probs <- exp_eta / rowSums(exp_eta)
+
+  # Replace NaN rows (complete underflow) with one-hot vectors
+  nan_rows <- apply(probs, 1, \(r) any(is.nan(r)))
+  if (any(nan_rows)) {
+    dominant <- apply(eta_aug[nan_rows, , drop = FALSE], 1, which.max)
+    probs[nan_rows, ] <- 0
+    probs[cbind(which(nan_rows), dominant)] <- 1
+  }
+
+  J <- ncol(probs)
+  probs[, -J, drop = FALSE]
 }
 
 #' Compute the masked linear predictor matrix
