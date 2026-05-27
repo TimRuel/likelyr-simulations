@@ -1,63 +1,125 @@
 # ======================================================================
 # Sampler Specification (Multinomial Logistic Regression Parameterization)
-# Target: Simpson's Index D(theta_bar) = sum(theta_bar_j^2)
+# Target: Simpson's Index D(theta(x_0; B)) = sum(theta_j(x_0; B)^2)
 #
-# Samples omega_hat directly from the level set
+# Samples omega_hat as a probability vector from the level set
 #
-#   Omega_psi_hat = { B ∈ R^{p(J-1)} : psi(B) = psi_hat }
+#   Omega_psi_hat = { theta ∈ Delta^{J-1} : D(theta) = psi_hat }
 #
-# where psi(B) = sum_j theta_bar_j(B)^2 and theta_bar(B) = (1/n) X Theta(B)
-# is the vector of marginal category probabilities under B.
+# This set has the same sphere geometry as in the simple logit case:
+# a (J-2)-sphere of radius r = sqrt(psi_hat - 1/J) centered at
+# c = (1/J)1 within the affine hyperplane Pi = {v : sum(v) = 1}.
 #
-# Since Omega_psi_hat has no closed-form geometric characterization in
-# vec(B) space (unlike the simple logit case where it is a sphere in
-# Delta^{J-1}), we sample feasible points via auglag: minimize a dummy
-# objective f(B) = 0 subject to the equality constraint psi(B) = psi_hat.
-# A fresh random initial guess is drawn for each call to provide variety
-# across draws.
+# Sampling is exact and cheap — no optimization required. The candidate
+# is a length-J probability vector interpreted as the conditional
+# category distribution at the reference covariate x_0 = colMeans(X).
+# E_loglik uses omega_hat to construct B_hat via a rank-1 adjustment
+# of B_mle, preserving the full covariate structure in the objective.
+#
+#   Disconnected regime (psi_hat >= 1/(J-1)):
+#     Omega_psi_hat breaks into J disjoint spherical caps. Cap selection
+#     is weighted by empirical category frequencies. data$Y uses natural
+#     factor ordering (levels = 1:J), so table(data$Y) returns counts
+#     in natural category order and p_emp[j] is the frequency of
+#     category j.
+#
+#   Connected regime (psi_hat < 1/(J-1)):
+#     Omega_psi_hat is a full (J-2)-sphere. Draws are taken uniformly
+#     by projecting a Gaussian onto the tangent space of Pi.
 #
 # Returns function(history = NULL) -> list(candidate, diag):
-#   $candidate      — numeric vector vec(B) of length p*(J-1), a draw
-#                     from Omega_psi_hat
-#   $diag$convergence — integer convergence code from auglag
+#   $candidate      — numeric vector of length J (omega-hat as a
+#                     probability vector in Delta^{J-1})
+#   $diag$cap              — integer cap index; NA in connected regime
+#   $diag$is_dominant_cap  — logical; NA in connected regime
 # ======================================================================
 
 # ======================================================================
-# 1. Sampler constructor
+# 1. Sphere sampler constructor
 # ======================================================================
 
-simpson_sampler_fn <- function(
-  param_dim,
-  psi_mle,
-  data,
-  coefficient_distribution,
-  ...
-) {
-  X_design <- get_X_design(data)
-  p <- ncol(X_design)
-  J <- param_dim / p + 1L
+simpson_sampler_fn <- function(param_dim, psi_mle, data, ...) {
+  J <- attr(data, "J")
+  r <- sqrt(psi_mle - 1 / J)
+  c_p <- rep(1 / J, J)
+  disconnected <- psi_mle >= 1 / (J - 1)
 
-  function(history = NULL) {
-    b0 <- draw_from(coefficient_distribution, param_dim)
+  # data$Y has natural factor ordering (levels = 1:J), so table() returns
+  # counts in natural category order: p_emp[j] is the frequency of category j.
+  counts <- table(data$Y)
+  p_emp <- as.numeric(counts) / sum(counts)
+  dominant_cap <- which.max(p_emp)
 
-    res <- nloptr::auglag(
-      x0 = b0,
-      fn = function(b) 0,
-      heq = function(b) {
-        beta <- matrix(b, nrow = p, ncol = J - 1L)
-        theta_bar <- compute_theta_bar(beta, X_design)
-        sum(theta_bar^2) - psi_mle
-      },
-      heqjac = function(b) psi_jac(b, data),
-      localsolver = "SLSQP",
-      localtol = 1e-6,
-      deprecatedBehavior = FALSE
-    )
+  if (disconnected) {
+    # Cap axes: unit vector from c toward e_j within Pi, for all j
+    n_caps <- lapply(seq_len(J), function(j) {
+      ej_minus_c <- rep(-1 / J, J)
+      ej_minus_c[j] <- (J - 1) / J
+      ej_minus_c / sqrt(sum(ej_minus_c^2))
+    })
 
-    list(
-      candidate = res$par,
-      diag = list(convergence = res$convergence)
-    )
+    cos_alpha <- {
+      num <- 1 + J * sqrt((J - 2) * ((J - 1) * psi_mle - 1))
+      denom <- (J - 1) * sqrt((J - 1) * (J * psi_mle - 1))
+      num / denom
+    }
+    alpha <- acos(cos_alpha)
+    sin_alpha <- sin(alpha)
+
+    draw_h <- if (J == 2L) {
+      function() 1
+    } else {
+      a <- (J - 2) / 2
+      p_alpha <- pbeta(sin_alpha^2, a, 0.5)
+      function() {
+        s <- qbeta(runif(1) * p_alpha, a, 0.5)
+        sqrt(1 - s)
+      }
+    }
+
+    function(history = NULL) {
+      j <- sample.int(J, size = 1L, prob = p_emp)
+      n_j <- n_caps[[j]]
+      h <- draw_h()
+      w <- rnorm(J)
+      w <- w - mean(w)
+      w <- w - sum(w * n_j) * n_j
+      norm_w <- sqrt(sum(w * w))
+
+      v <- if (norm_w < 1e-10) {
+        r * n_j
+      } else {
+        u <- w / norm_w
+        r * (h * n_j + sqrt(max(0, 1 - h^2)) * u)
+      }
+
+      x <- c_p + v
+      list(
+        candidate = x,
+        diag = list(
+          cap = j,
+          is_dominant_cap = j == dominant_cap
+        )
+      )
+    }
+  } else {
+    function(history = NULL) {
+      repeat {
+        v <- rnorm(J)
+        v <- v - mean(v)
+        norm_v <- sqrt(sum(v * v))
+        if (norm_v >= 1e-10) break
+      }
+      v <- v / norm_v * r
+      x <- c_p + v
+      list(
+        candidate = x,
+        diag = list(
+          cap = NA_integer_,
+          is_dominant_cap = NA
+        )
+      )
+    }
   }
 }
 
@@ -66,6 +128,13 @@ simpson_sampler_fn <- function(
 # ======================================================================
 
 #' Build a sampler_spec for Simpson's index under the MLR model
+#'
+#' Draws omega_hat as a probability vector from Omega_psi_hat in
+#' Delta^{J-1} using the sphere geometry. omega_hat is interpreted as
+#' the conditional category distribution at x_0 = colMeans(X_design).
+#' E_loglik uses it to construct an observation-specific reference
+#' B_hat via a rank-1 adjustment of B_mle, preserving the full
+#' covariate structure in the branch objective.
 #'
 #' @param config  Simulation config list. Must contain a 'sampler' section.
 #' @return        A \code{sampler_spec} object.
@@ -80,7 +149,6 @@ make_sampler <- function(config) {
     sampler_fn = simpson_sampler_fn,
     min_branches = cfg$min_branches,
     branch_buffer = cfg$branch_buffer %||% 0L,
-    name = "Simpson's index MLR sampler",
-    coefficient_distribution = config$parameter$coefficient_distribution
+    name = "Simpson's index sphere sampler (MLR)"
   )
 }

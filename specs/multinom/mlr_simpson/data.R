@@ -11,6 +11,19 @@
 #   compute_theta_bar()  — marginal category probabilities
 #   generate_beta_0()    — constrained coefficient search
 #
+# Parameterization convention:
+#   Category 1 is the baseline; its coefficient vector is fixed at 0.
+#   The free coefficient matrix is B = [β_2 | ... | β_J] ∈ R^{p×(J-1)},
+#   stored as vec(B) = (β_2^T, ..., β_J^T)^T ∈ R^{p(J-1)}.
+#   The conditional probability vector is
+#     theta_j = exp(x^T β_j) / sum_{k=1}^{J} exp(x^T β_k),
+#   where β_1 = 0. In matrix form: cbind(0, X %*% B) gives the n x J
+#   linear predictor matrix with the baseline column prepended.
+#
+#   data$Y uses natural factor ordering (levels = 1:J), so nnet::multinom
+#   automatically uses category 1 as its reference. table(data$Y) returns
+#   counts in natural category order and is safe to index by position.
+#
 # Config structure:
 #   model:
 #     formula: "Y ~ X1 + X2"
@@ -51,14 +64,14 @@ get_X_design <- function(data) {
 #' Build the response indicator matrix from a data frame with "terms" and "J"
 #'
 #' @param data  Data frame with "terms" and "J" attributes.
-#' @return      n x (J-1) integer indicator matrix (baseline category J dropped).
+#' @return      n x (J-1) integer indicator matrix (baseline category 1 dropped).
 get_Y_design <- function(data) {
   trms <- attr(data, "terms")
   response <- all.vars(trms)[attr(trms, "response")]
   y <- data[[response]]
   J <- attr(data, "J")
   y_int <- as.integer(as.character(y))
-  non_baseline <- seq_len(J - 1L)
+  non_baseline <- seq(2L, J)
 
   outer(y_int, non_baseline, `==`) * 1L
 }
@@ -92,7 +105,11 @@ softmax_scalar <- function(x) {
 #'
 #' Uses the true coefficient vector param_0 from the parameter spec to
 #' generate categorical responses. Applies epsilon smoothing to ensure
-#' all categories appear at least once.
+#' all categories appear at least once: each missing category receives
+#' one pseudo-observation placed at a randomly selected observed covariate
+#' row. Random placement avoids the artificial covariate concentration
+#' that results from placing all pseudo-observations at the column means,
+#' which can cause severe MLE instability when many categories are absent.
 #'
 #' @param config     Simulation config list.
 #' @param parameter  Parameter spec object with param_0 set.
@@ -123,19 +140,21 @@ generate_data <- function(config, parameter) {
   X_design <- get_X_design(tmp_data)
 
   # ── Draw categorical responses using true coefficients ────────────────
+  # beta_0 is p x (J-1) = [β_2,...,β_J]; prepend 0 column for category 1.
   beta_0 <- matrix(parameter$param_0, nrow = ncol(X_design), ncol = J - 1L)
   eta <- X_design %*% beta_0
-  probs <- t(apply(cbind(eta, 0), 1, softmax_scalar))
+  probs <- t(apply(cbind(0, eta), 1, softmax_scalar))
   Y <- apply(probs, 1, \(p) sample.int(J, 1L, prob = p))
 
   # ── Epsilon smoothing: add pseudo-obs for zero-count categories ───────
+  # Each missing category receives one pseudo-observation placed at a
+  # randomly selected observed covariate row, spreading pseudo-obs across
+  # the covariate space rather than concentrating them at the column means.
   if (epsilon > 0) {
     zero_cats <- setdiff(seq_len(J), unique(Y))
     if (length(zero_cats) > 0L) {
-      pseudo <- covariate_df[rep(1L, length(zero_cats)), , drop = FALSE]
-      for (sym in names(covariate_df)) {
-        pseudo[[sym]] <- mean(covariate_df[[sym]])
-      }
+      idx <- sample.int(n, length(zero_cats), replace = TRUE)
+      pseudo <- covariate_df[idx, , drop = FALSE]
       rownames(pseudo) <- NULL
       covariate_df <- rbind(covariate_df, pseudo)
       Y <- c(Y, zero_cats)
@@ -143,9 +162,16 @@ generate_data <- function(config, parameter) {
   }
 
   # ── Assemble final data frame ─────────────────────────────────────────
-  data <- cbind(data.frame(Y = factor(Y, levels = seq_len(J))), covariate_df)
+  # Natural factor ordering (levels = 1:J) so nnet::multinom uses
+  # category 1 as baseline and table(data$Y) is safe to index by position.
+  Y_factor <- factor(Y, levels = seq_len(J))
+
+  data <- data.frame(Y = Y_factor) |>
+    cbind(covariate_df)
+
   attr(data, "terms") <- terms(as.formula(formula_str), data = data)
   attr(data, "J") <- J
+  attr(data, "n_obs") <- n
 
   data
 }

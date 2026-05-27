@@ -1,25 +1,20 @@
 # ======================================================================
 # Traversal Specification (Multinomial Logistic Regression Parameterization)
-# Target: Simpson's Index D(theta_bar) = sum(theta_bar_j^2)
+# Target: Simpson's Index D(theta(x_0; B)) = sum(theta_j(x_0; B)^2)
 # ======================================================================
 
 # ======================================================================
-# Simpson's Index Mode Locator (gradient ascent on constraint manifold)
+# Simpson's Index Mode Locator
 #
-# Finds the branch mode by projected gradient ascent in vec(B) space,
-# moving omega_hat along the constraint surface psi(B) = const in the
-# direction that increases E_loglik. The mode psi value is read off
-# from the converged parameter.
+# omega_hat is a length-J probability vector on the sphere in Delta^{J-1},
+# interpreted as the conditional category distribution at x_0. The branch
+# function is evaluated over the full psi domain [1/J, 1) via golden
+# section search, exploiting unimodality to locate the branch mode.
 #
-# This replaces golden section search, which is expensive in the MLR
-# case because each evaluation requires a full auglag solve. Projected
-# gradient ascent only requires gradient evaluations, which are much
-# cheaper.
-#
-# The projection onto the tangent space of the constraint surface is:
-#   grad_proj = grad - (grad . jac / ||jac||^2) * jac
-# which removes the component of the E_loglik gradient that would
-# change psi, keeping the iterate approximately on the manifold.
+# param_mle is used as the warm start for all branch evaluations because
+# omega_hat and the model parameter live in different spaces
+# (omega_dim = J vs param_dim = p*(J-1)). Passing omega_hat as param_init
+# would produce a dimension mismatch inside branch_evaluator.
 # ======================================================================
 
 simpson_mode_locator_fn <- function(
@@ -27,9 +22,8 @@ simpson_mode_locator_fn <- function(
   branch_binder,
   increment,
   param_dim,
-  psi_fn,
-  psi_jac,
-  E_loglik_grad,
+  param_mle,
+  omega_dim,
   ...
 ) {
   if (is.null(psi_interval)) {
@@ -41,64 +35,74 @@ simpson_mode_locator_fn <- function(
 
   lower <- min(psi_interval)
   upper <- max(psi_interval)
+  same_space <- isTRUE(omega_dim == param_dim)
 
   function(omega_hat, psi_hint = NULL) {
-    # -------------------------------------------------------------------
-    # Projected gradient ascent on the constraint manifold
-    # -------------------------------------------------------------------
-    B <- omega_hat
-    alpha <- 0.01
-    n_steps <- 30L
-    prev_psi <- psi_fn(B)
+    branch_evaluator <- branch_binder(omega_hat)
 
-    for (i in seq_len(n_steps)) {
-      grad <- tryCatch(
-        E_loglik_grad(B, omega_hat),
-        error = function(e) NULL
-      )
-      if (is.null(grad) || !all(is.finite(grad))) {
-        break
+    # When omega_hat and param share the same space, omega_hat is a
+    # valid warm start. Otherwise use param_mle.
+    init_guess <- if (same_space) omega_hat else param_mle
+    phi <- (sqrt(5) - 1) / 2
+    tol <- increment / 10
+    a <- lower
+    b <- upper
+
+    x1 <- b - phi * (b - a)
+    x2 <- a + phi * (b - a)
+
+    f1 <- tryCatch(
+      branch_evaluator(x1, init_guess)$branch_val,
+      error = function(e) -Inf
+    )
+    f2 <- tryCatch(
+      branch_evaluator(x2, init_guess)$branch_val,
+      error = function(e) -Inf
+    )
+
+    while ((b - a) > tol) {
+      if (f1 < f2) {
+        a <- x1
+        x1 <- x2
+        f1 <- f2
+        x2 <- a + phi * (b - a)
+        f2 <- tryCatch(
+          branch_evaluator(x2, init_guess)$branch_val,
+          error = function(e) -Inf
+        )
+      } else {
+        b <- x2
+        x2 <- x1
+        f2 <- f1
+        x1 <- b - phi * (b - a)
+        f1 <- tryCatch(
+          branch_evaluator(x1, init_guess)$branch_val,
+          error = function(e) -Inf
+        )
       }
-
-      jac <- as.numeric(psi_jac(B))
-      jac_norm2 <- sum(jac^2)
-      if (jac_norm2 < 1e-12) {
-        break
-      }
-
-      # Project gradient onto tangent space of constraint surface
-      grad_proj <- grad - sum(grad * jac) / jac_norm2 * jac
-      grad_norm <- sqrt(sum(grad_proj^2))
-      if (grad_norm < 1e-10) {
-        break
-      }
-
-      B <- B + alpha * grad_proj / grad_norm
     }
 
+    psi_hat <- (a + b) / 2
+
     # -------------------------------------------------------------------
-    # Read off psi at converged parameter and snap to grid
+    # Snap to nearest grid point, anchored at lower
     # -------------------------------------------------------------------
-    psi_hat <- tryCatch(psi_fn(B), error = function(e) prev_psi)
-    psi_hat <- max(lower, min(upper, psi_hat))
     psi_hat_snapped <- lower +
       round((psi_hat - lower) / increment) * increment
     psi_hat_snapped <- min(max(psi_hat_snapped, lower), upper)
 
     # -------------------------------------------------------------------
-    # Final evaluation at snapped mode via branch evaluator
+    # Final evaluation at snapped mode
     # -------------------------------------------------------------------
-    branch_evaluator <- branch_binder(omega_hat)
-
     result <- tryCatch(
-      branch_evaluator(psi_hat_snapped, B),
+      branch_evaluator(psi_hat_snapped, init_guess),
       error = function(e) NULL
     )
 
     if (is.null(result)) {
       return(list(
         psi_hat = psi_hat_snapped,
-        param_hat = omega_hat,
+        param_hat = init_guess,
         loglik_at_mode = -Inf,
         status = "eval_failed"
       ))
@@ -129,7 +133,7 @@ make_traversal <- function(config) {
     function(k) is.null(cfg[[k]]),
     logical(1)
   )]
-  if (length(missing) > 0) {
+  if (length(missing) > 0L) {
     stop(
       "Missing required traversal config fields: ",
       paste(missing, collapse = ", "),
@@ -151,6 +155,14 @@ make_traversal <- function(config) {
     cap_multiplier = cfg$cap_multiplier %||% 10.0,
     mode_gap_multiplier = cfg$mode_gap_multiplier %||% 1.0,
     interval_buffer = cfg$interval_buffer %||% 1.0,
+    max_drop_frac = cfg$max_drop_frac %||% 10.0,
+    resid_tol = cfg$resid_tol %||% 1e-3,
+    profile_retry_on = cfg$profile_retry_on %||%
+      c("monotonicity", "constraint", "drop"),
+    branch_retry_on = cfg$branch_retry_on %||%
+      character(0),
+    use_mode_locator_for_profile = cfg$use_mode_locator_for_profile %||% FALSE,
+    rejection_reasons = cfg$rejection_reasons,
     name = "Branch traversal strategy"
   )
 }
