@@ -5,13 +5,6 @@ suppressPackageStartupMessages({
   library(yaml)
 })
 
-root <- here()
-
-source(
-  file.path(root, "R", "utils.R"),
-  local = TRUE
-)
-
 sim_config_path <- "experiments/multinom/logit_simpson/sim_01/simulation.yml"
 
 sim_dir <- path_dir(sim_config_path)
@@ -22,7 +15,7 @@ spec_path <- config$experiment$spec_path
 
 spec_dir <- path(root, spec_path)
 
-spec_env <- load_spec_env(spec_dir)
+spec_env <- likelyr:::load_spec_env(spec_dir)
 
 source(path(spec_dir, "parameter.R"), local = spec_env)
 source(path(spec_dir, "likelihood.R"), local = spec_env)

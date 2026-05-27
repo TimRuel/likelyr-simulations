@@ -117,11 +117,10 @@ softmax_scalar <- function(x) {
 #'   attributes "terms" and "J" set.
 generate_data <- function(config, parameter) {
   data_cfg <- config$data
-  model_cfg <- config$model
   param_cfg <- config$parameter
   n <- data_cfg$n_obs
   epsilon <- data_cfg$epsilon %||% 0
-  formula_str <- model_cfg$formula
+  formula_str <- data_cfg$formula
   J <- param_cfg$J
 
   # ── Draw observed covariates ──────────────────────────────────────────

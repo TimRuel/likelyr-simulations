@@ -55,16 +55,6 @@ if (!file_exists(sim_yml)) {
 }
 
 # ============================================================
-# Resolve project root + utilities
-# ============================================================
-root <- here()
-
-source(
-  file.path(root, "R", "utils.R"),
-  local = TRUE
-)
-
-# ============================================================
 # Execution configuration
 # ============================================================
 exec_mode <- Sys.getenv("LIKELYR_EXEC_MODE", "slurm")

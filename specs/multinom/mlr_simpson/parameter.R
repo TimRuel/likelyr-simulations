@@ -40,9 +40,8 @@
 #' @return        N x p design matrix.
 draw_X_mc <- function(config, N = 1e5L) {
   data_cfg <- config$data
-  model_cfg <- config$model
   J <- config$parameter$J
-  formula_str <- model_cfg$formula
+  formula_str <- data_cfg$formula
 
   covariate_df <- lapply(data_cfg$predictors, \(pred) {
     vals <- draw_from(pred$distribution, N)
