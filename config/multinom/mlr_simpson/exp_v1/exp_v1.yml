@@ -21,147 +21,147 @@ design:
   - parameter.J: 5
     data.n_obs: 20
     parameter.index_target_frac: 0.1
-  # - parameter.J: 5
-  #   data.n_obs: 20
-  #   parameter.index_target_frac: 0.3
-  # - parameter.J: 5
-  #   data.n_obs: 20
-  #   parameter.index_target_frac: 0.5
-  # - parameter.J: 5
-  #   data.n_obs: 20
-  #   parameter.index_target_frac: 0.7
-  # - parameter.J: 5
-  #   data.n_obs: 30
-  #   parameter.index_target_frac: 0.1
-  # - parameter.J: 5
-  #   data.n_obs: 30
-  #   parameter.index_target_frac: 0.3
-  # - parameter.J: 5
-  #   data.n_obs: 30
-  #   parameter.index_target_frac: 0.5
-  # - parameter.J: 5
-  #   data.n_obs: 30
-  #   parameter.index_target_frac: 0.7
-  # - parameter.J: 5
-  #   data.n_obs: 40
-  #   parameter.index_target_frac: 0.1
-  # - parameter.J: 5
-  #   data.n_obs: 40
-  #   parameter.index_target_frac: 0.3
-  # - parameter.J: 5
-  #   data.n_obs: 40
-  #   parameter.index_target_frac: 0.5
-  # - parameter.J: 5
-  #   data.n_obs: 40
-  #   parameter.index_target_frac: 0.7
-  # - parameter.J: 10
-  #   data.n_obs: 40
-  #   parameter.index_target_frac: 0.1
-  # - parameter.J: 10
-  #   data.n_obs: 40
-  #   parameter.index_target_frac: 0.3
-  # - parameter.J: 10
-  #   data.n_obs: 40
-  #   parameter.index_target_frac: 0.5
-  # - parameter.J: 10
-  #   data.n_obs: 40
-  #   parameter.index_target_frac: 0.7
-  # - parameter.J: 10
-  #   data.n_obs: 60
-  #   parameter.index_target_frac: 0.1
-  # - parameter.J: 10
-  #   data.n_obs: 60
-  #   parameter.index_target_frac: 0.3
-  # - parameter.J: 10
-  #   data.n_obs: 60
-  #   parameter.index_target_frac: 0.5
-  # - parameter.J: 10
-  #   data.n_obs: 60
-  #   parameter.index_target_frac: 0.7
-  # - parameter.J: 10
-  #   data.n_obs: 80
-  #   parameter.index_target_frac: 0.1
-  # - parameter.J: 10
-  #   data.n_obs: 80
-  #   parameter.index_target_frac: 0.3
-  # - parameter.J: 10
-  #   data.n_obs: 80
-  #   parameter.index_target_frac: 0.5
-  # - parameter.J: 10
-  #   data.n_obs: 80
-  #   parameter.index_target_frac: 0.7
-  # - parameter.J: 15
-  #   data.n_obs: 60
-  #   parameter.index_target_frac: 0.1
-  # - parameter.J: 15
-  #   data.n_obs: 60
-  #   parameter.index_target_frac: 0.3
-  # - parameter.J: 15
-  #   data.n_obs: 60
-  #   parameter.index_target_frac: 0.5
-  # - parameter.J: 15
-  #   data.n_obs: 60
-  #   parameter.index_target_frac: 0.7
-  # - parameter.J: 15
-  #   data.n_obs: 90
-  #   parameter.index_target_frac: 0.1
-  # - parameter.J: 15
-  #   data.n_obs: 90
-  #   parameter.index_target_frac: 0.3
-  # - parameter.J: 15
-  #   data.n_obs: 90
-  #   parameter.index_target_frac: 0.5
-  # - parameter.J: 15
-  #   data.n_obs: 90
-  #   parameter.index_target_frac: 0.7
-  # - parameter.J: 15
-  #   data.n_obs: 120
-  #   parameter.index_target_frac: 0.1
-  # - parameter.J: 15
-  #   data.n_obs: 120
-  #   parameter.index_target_frac: 0.3
-  # - parameter.J: 15
-  #   data.n_obs: 120
-  #   parameter.index_target_frac: 0.5
-  # - parameter.J: 15
-  #   data.n_obs: 120
-  #   parameter.index_target_frac: 0.7
-  # - parameter.J: 20
-  #   data.n_obs: 80
-  #   parameter.index_target_frac: 0.1
-  # - parameter.J: 20
-  #   data.n_obs: 80
-  #   parameter.index_target_frac: 0.3
-  # - parameter.J: 20
-  #   data.n_obs: 80
-  #   parameter.index_target_frac: 0.5
-  # - parameter.J: 20
-  #   data.n_obs: 80
-  #   parameter.index_target_frac: 0.7
-  # - parameter.J: 20
-  #   data.n_obs: 120
-  #   parameter.index_target_frac: 0.1
-  # - parameter.J: 20
-  #   data.n_obs: 120
-  #   parameter.index_target_frac: 0.3
-  # - parameter.J: 20
-  #   data.n_obs: 120
-  #   parameter.index_target_frac: 0.5
-  # - parameter.J: 20
-  #   data.n_obs: 120
-  #   parameter.index_target_frac: 0.7
-  # - parameter.J: 20
-  #   data.n_obs: 160
-  #   parameter.index_target_frac: 0.1
-  # - parameter.J: 20
-  #   data.n_obs: 160
-  #   parameter.index_target_frac: 0.3
-  # - parameter.J: 20
-  #   data.n_obs: 160
-  #   parameter.index_target_frac: 0.5
-  # - parameter.J: 20
-  #   data.n_obs: 160
-  #   parameter.index_target_frac: 0.7
+  - parameter.J: 5
+    data.n_obs: 20
+    parameter.index_target_frac: 0.3
+  - parameter.J: 5
+    data.n_obs: 20
+    parameter.index_target_frac: 0.5
+  - parameter.J: 5
+    data.n_obs: 20
+    parameter.index_target_frac: 0.7
+  - parameter.J: 5
+    data.n_obs: 30
+    parameter.index_target_frac: 0.1
+  - parameter.J: 5
+    data.n_obs: 30
+    parameter.index_target_frac: 0.3
+  - parameter.J: 5
+    data.n_obs: 30
+    parameter.index_target_frac: 0.5
+  - parameter.J: 5
+    data.n_obs: 30
+    parameter.index_target_frac: 0.7
+  - parameter.J: 5
+    data.n_obs: 40
+    parameter.index_target_frac: 0.1
+  - parameter.J: 5
+    data.n_obs: 40
+    parameter.index_target_frac: 0.3
+  - parameter.J: 5
+    data.n_obs: 40
+    parameter.index_target_frac: 0.5
+  - parameter.J: 5
+    data.n_obs: 40
+    parameter.index_target_frac: 0.7
+  - parameter.J: 10
+    data.n_obs: 40
+    parameter.index_target_frac: 0.1
+  - parameter.J: 10
+    data.n_obs: 40
+    parameter.index_target_frac: 0.3
+  - parameter.J: 10
+    data.n_obs: 40
+    parameter.index_target_frac: 0.5
+  - parameter.J: 10
+    data.n_obs: 40
+    parameter.index_target_frac: 0.7
+  - parameter.J: 10
+    data.n_obs: 60
+    parameter.index_target_frac: 0.1
+  - parameter.J: 10
+    data.n_obs: 60
+    parameter.index_target_frac: 0.3
+  - parameter.J: 10
+    data.n_obs: 60
+    parameter.index_target_frac: 0.5
+  - parameter.J: 10
+    data.n_obs: 60
+    parameter.index_target_frac: 0.7
+  - parameter.J: 10
+    data.n_obs: 80
+    parameter.index_target_frac: 0.1
+  - parameter.J: 10
+    data.n_obs: 80
+    parameter.index_target_frac: 0.3
+  - parameter.J: 10
+    data.n_obs: 80
+    parameter.index_target_frac: 0.5
+  - parameter.J: 10
+    data.n_obs: 80
+    parameter.index_target_frac: 0.7
+  - parameter.J: 15
+    data.n_obs: 60
+    parameter.index_target_frac: 0.1
+  - parameter.J: 15
+    data.n_obs: 60
+    parameter.index_target_frac: 0.3
+  - parameter.J: 15
+    data.n_obs: 60
+    parameter.index_target_frac: 0.5
+  - parameter.J: 15
+    data.n_obs: 60
+    parameter.index_target_frac: 0.7
+  - parameter.J: 15
+    data.n_obs: 90
+    parameter.index_target_frac: 0.1
+  - parameter.J: 15
+    data.n_obs: 90
+    parameter.index_target_frac: 0.3
+  - parameter.J: 15
+    data.n_obs: 90
+    parameter.index_target_frac: 0.5
+  - parameter.J: 15
+    data.n_obs: 90
+    parameter.index_target_frac: 0.7
+  - parameter.J: 15
+    data.n_obs: 120
+    parameter.index_target_frac: 0.1
+  - parameter.J: 15
+    data.n_obs: 120
+    parameter.index_target_frac: 0.3
+  - parameter.J: 15
+    data.n_obs: 120
+    parameter.index_target_frac: 0.5
+  - parameter.J: 15
+    data.n_obs: 120
+    parameter.index_target_frac: 0.7
+  - parameter.J: 20
+    data.n_obs: 80
+    parameter.index_target_frac: 0.1
+  - parameter.J: 20
+    data.n_obs: 80
+    parameter.index_target_frac: 0.3
+  - parameter.J: 20
+    data.n_obs: 80
+    parameter.index_target_frac: 0.5
+  - parameter.J: 20
+    data.n_obs: 80
+    parameter.index_target_frac: 0.7
+  - parameter.J: 20
+    data.n_obs: 120
+    parameter.index_target_frac: 0.1
+  - parameter.J: 20
+    data.n_obs: 120
+    parameter.index_target_frac: 0.3
+  - parameter.J: 20
+    data.n_obs: 120
+    parameter.index_target_frac: 0.5
+  - parameter.J: 20
+    data.n_obs: 120
+    parameter.index_target_frac: 0.7
+  - parameter.J: 20
+    data.n_obs: 160
+    parameter.index_target_frac: 0.1
+  - parameter.J: 20
+    data.n_obs: 160
+    parameter.index_target_frac: 0.3
+  - parameter.J: 20
+    data.n_obs: 160
+    parameter.index_target_frac: 0.5
+  - parameter.J: 20
+    data.n_obs: 160
+    parameter.index_target_frac: 0.7
 base_simulation:
   iterations: 1100    
   parameter:
