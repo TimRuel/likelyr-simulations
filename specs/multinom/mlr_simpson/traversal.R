@@ -24,6 +24,7 @@ simpson_mode_locator_fn <- function(
   param_dim,
   param_mle,
   omega_dim,
+  data,
   ...
 ) {
   if (is.null(psi_interval)) {
@@ -35,14 +36,29 @@ simpson_mode_locator_fn <- function(
 
   lower <- min(psi_interval)
   upper <- max(psi_interval)
-  same_space <- isTRUE(omega_dim == param_dim)
+
+  # Precompute x_0 and B_mle_mat once at construction time
+  x_0 <- x_reference(data)
+  p <- length(x_0)
+  J <- omega_dim
+  B_mle_mat <- matrix(param_mle, nrow = p, ncol = J - 1L)
+  x0_norm2 <- sum(x_0^2)
+
+  # Construct a cap-specific warm start from omega_hat via rank-1
+  # adjustment of B_mle along x_0, matching theta(x_0; B) = omega_hat.
+  # This is identical to make_B_hat() in likelihood.R.
+  make_warm_start <- function(omega_hat) {
+    eta_0 <- log(omega_hat[-1L]) - log(omega_hat[1L])
+    eta_mle <- as.numeric(x_0 %*% B_mle_mat)
+    delta <- eta_0 - eta_mle
+    B_hat <- B_mle_mat + outer(x_0, delta) / x0_norm2
+    as.numeric(B_hat)
+  }
 
   function(omega_hat, psi_hint = NULL) {
     branch_evaluator <- branch_binder(omega_hat)
+    init_guess <- make_warm_start(omega_hat)
 
-    # When omega_hat and param share the same space, omega_hat is a
-    # valid warm start. Otherwise use param_mle.
-    init_guess <- if (same_space) omega_hat else param_mle
     phi <- (sqrt(5) - 1) / 2
     tol <- increment / 10
     a <- lower

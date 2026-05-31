@@ -4,7 +4,6 @@
 #SBATCH --time=04:00:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=timothyruel2024@u.northwestern.edu
-#SBATCH --job-name=likelyr_iter
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1

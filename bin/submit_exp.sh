@@ -6,11 +6,13 @@ set -euo pipefail
 #
 # Contract:
 #   • Accepts <path/to/exp_vX.yml> (from config/)
-#   • Reads exp_dir and logs_dir from the YAML directly
+#   • Reads exp_dir from the YAML directly
 #   • Submits ONE Slurm array job per simulation
 #   • Array size = simulation.iterations (minus completed)
-#   • Creates per-simulation log directories under logs_dir
-#   • Writes a submission.log per simulation
+#   • Logs land in sim_dir/logs/ within the experiment directory
+#   • stderr is discarded (/dev/null) to save storage
+#   • Submits a completion flag job after each array that
+#     writes a COMPLETE file to the simulation directory
 #   • Uses filesystem as the source of truth
 # ============================================================
 
@@ -58,8 +60,7 @@ echo "🧪 Experiment config: $EXP_YML"
 # ===============================
 EXP_VERSION="$(grep -m1 '^\s*version:' "$EXP_YML" | sed 's/.*version:\s*//' | tr -d '[:space:]"')"
 EXP_RUN_DIR="$(grep -m1 '^\s*exp_dir:' "$EXP_YML" | sed 's/.*exp_dir:\s*//' | tr -d '[:space:]"')"
-LOGS_DIR="$(grep -m1 '^\s*logs_dir:' "$EXP_YML" | sed 's/.*logs_dir:\s*//' | tr -d '[:space:]"')"
-N_ITER="$(grep -m1 '^\s*iterations:' "$EXP_YML" | sed 's/.*iterations:\s*//' | tr -d '[:space:]"')"
+N_ITER="$(awk '/^simulation:/{found=1} found && /^\s+iterations:/{print $2; exit}' "$EXP_YML")"
 
 if [[ -z "$EXP_VERSION" ]]; then
   echo "❌ ERROR: experiment\$version missing or unparseable in $EXP_YML"
@@ -71,11 +72,6 @@ if [[ -z "$EXP_RUN_DIR" ]]; then
   exit 1
 fi
 
-if [[ -z "$LOGS_DIR" ]]; then
-  echo "❌ ERROR: experiment\$logs_dir missing or unparseable in $EXP_YML"
-  exit 1
-fi
-
 if [[ -z "$N_ITER" || ! "$N_ITER" =~ ^[0-9]+$ ]]; then
   echo "❌ ERROR: simulation\$iterations missing or invalid in $EXP_YML"
   exit 1
@@ -83,7 +79,6 @@ fi
 
 echo "🔖 Version:    $EXP_VERSION"
 echo "📂 Exp dir:    $EXP_RUN_DIR"
-echo "📋 Logs dir:   $LOGS_DIR"
 echo "🔁 Iterations: $N_ITER"
 
 # ===============================
@@ -117,7 +112,7 @@ SLURM_SCRIPT="bin/slurm_iter.sh"
 for sim_yml in "${SIM_YMLS[@]}"; do
   sim_id="$(basename "$sim_yml" .yml)"
   sim_dir="${EXP_RUN_DIR}/${sim_id}/"
-  log_dir="${LOGS_DIR}/${sim_id}"
+  log_dir="${sim_dir}logs"
 
   # --------------------------------------------------
   # Check how many iterations are already complete
@@ -131,7 +126,7 @@ for sim_yml in "${SIM_YMLS[@]}"; do
     if [[ -f "$model_file" ]]; then
       (( n_complete++ )) || true
     else
-      pending_indices+=("$i")   # 1-indexed to match iter folder names
+      pending_indices+=("$i")
     fi
   done
 
@@ -139,6 +134,7 @@ for sim_yml in "${SIM_YMLS[@]}"; do
 
   if [[ "$n_pending" -eq 0 ]]; then
     echo "✔ Skipping ${sim_id} — all ${N_ITER} iterations already complete"
+    touch "${sim_dir}COMPLETE"
     continue
   fi
 
@@ -187,8 +183,9 @@ for sim_yml in "${SIM_YMLS[@]}"; do
   job_output="$(
     sbatch \
       --array="${array_spec}" \
+      --job-name="likelyr_${sim_id}" \
       --output="${log_dir}/iter_%04a.out" \
-      --error="${log_dir}/iter_%04a.err" \
+      --error=/dev/null \
       "$SLURM_SCRIPT" \
       "$sim_yml"
   )"
@@ -197,17 +194,22 @@ for sim_yml in "${SIM_YMLS[@]}"; do
   echo "   Job ID: ${job_id}"
 
   # --------------------------------------------------
-  # Write submission log
+  # Submit completion flag job — runs after all array
+  # tasks finish regardless of individual task outcome.
+  # Writes a COMPLETE sentinel file to the sim directory
+  # so that analyze_exp.sh can reliably detect finished sims.
   # --------------------------------------------------
-  {
-    echo "========================================"
-    echo "Submitted: $(date)"
-    echo "Job ID:    ${job_id}"
-    echo "Array:     ${array_spec}"
-    echo "Pending:   ${n_pending} / ${N_ITER}"
-    echo "Complete:  ${n_complete} / ${N_ITER}"
-    echo "========================================"
-  } >> "${log_dir}/submission.log"
+  sbatch \
+    --dependency=afterany:${job_id} \
+    --job-name="likelyr_${sim_id}_complete" \
+    --partition=short \
+    --time=00:05:00 \
+    --nodes=1 --ntasks=1 --mem=1G \
+    --account=p32397 \
+    --output="${log_dir}/complete.out" \
+    --error=/dev/null \
+    --wrap="touch ${sim_dir}COMPLETE" \
+    > /dev/null
 
 done
 

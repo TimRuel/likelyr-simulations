@@ -29,6 +29,13 @@
 #   draw_X_mc()         — draw large MC covariate sample
 #   compute_theta_bar() — marginalise softmax over covariates
 #   generate_beta_0()   — find B satisfying D(theta_bar(B)) = psi_target
+#
+# MLE stabilization:
+#   beta_mle_fn() augments the data with one pseudo-observation per
+#   zero-count category before fitting nnet::multinom. This prevents
+#   coefficient divergence for unobserved categories without affecting
+#   the dataset used for inference. The augmentation is scoped entirely
+#   to MLE fitting and does not propagate to the likelihood or sieve.
 # ======================================================================
 
 # ── Monte Carlo helpers ─────────────────────────────────────────────────
@@ -144,15 +151,50 @@ generate_beta_0 <- function(
 #' Transposing to p x (J-1) and flattening column-major gives
 #' vec(B) = (β_2^T,...,β_J^T)^T, matching our parameterization convention.
 #'
-#' A small L2 penalty (decay) is applied to prevent coefficient
-#' divergence when some categories are rare or absent from the data.
+#' Before fitting, one pseudo-observation is added for each zero-count
+#' category, placed at the observed covariate means. This prevents
+#' coefficient divergence when categories are absent from the data, which
+#' can corrupt param_mle and destabilize the IL machinery. The augmentation
+#' is scoped entirely to this function and does not affect the dataset
+#' stored in the model or used for inference elsewhere. The "n_obs"
+#' attribute identifies the original observations, excluding any
+#' epsilon-smoothed rows already present in data.
 #'
-#' @param data  Data frame with "terms" and "J" attributes.
+#' A small L2 penalty (decay) is applied in addition to the
+#' pseudo-observations for further numerical stability.
+#'
+#' @param data  Data frame with "terms", "J", and "n_obs" attributes.
 #' @return      Numeric vector of length p*(J-1).
 beta_mle_fn <- function(data) {
+  J <- attr(data, "J")
+  n_obs <- attr(data, "n_obs")
+  formula_str <- formula(attr(data, "terms"))
+
+  # Augment with one pseudo-observation per zero-count category,
+  # placed at the observed covariate means. Scoped to MLE fitting only.
+  y <- as.integer(as.character(data$Y[seq_len(n_obs)]))
+  zero_cats <- setdiff(seq_len(J), unique(y))
+
+  data_fit <- if (length(zero_cats) > 0L) {
+    obs_data <- data[seq_len(n_obs), , drop = FALSE]
+    covariate_cols <- setdiff(names(obs_data), "Y")
+    col_means <- lapply(obs_data[covariate_cols], mean)
+    pseudo <- as.data.frame(col_means)[
+      rep(1L, length(zero_cats)),
+      ,
+      drop = FALSE
+    ]
+    rownames(pseudo) <- NULL
+    pseudo$Y <- factor(zero_cats, levels = levels(data$Y))
+    pseudo <- pseudo[c("Y", covariate_cols)]
+    rbind(obs_data, pseudo)
+  } else {
+    data[seq_len(n_obs), , drop = FALSE]
+  }
+
   fit <- nnet::multinom(
-    formula(attr(data, "terms")),
-    data = data,
+    formula_str,
+    data = data_fit,
     maxit = 2000,
     decay = 0.01,
     trace = FALSE

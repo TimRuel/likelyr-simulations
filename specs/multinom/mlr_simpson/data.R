@@ -24,23 +24,30 @@
 #   automatically uses category 1 as its reference. table(data$Y) returns
 #   counts in natural category order and is safe to index by position.
 #
+# Zero-count categories:
+#   No epsilon smoothing is applied to the generated data. When psi_0 is
+#   high, the data-generating distribution is concentrated and zero-count
+#   categories are expected. Resampling or augmenting the dataset to
+#   ensure all categories appear would bias the simulation by excluding
+#   datasets that are typical at that parameter value. MLE stabilization
+#   for zero-count categories is handled in beta_mle_fn() via
+#   pseudo-observation augmentation scoped to MLE fitting only.
+#
 # Config structure:
-#   model:
+#   data:
 #     formula: "Y ~ X1 + X2"
+#     n_obs: 20
+#     predictors:
+#       - symbol: X1
+#         distribution: {name: rnorm, args: [0.0, 1.0]}
+#       - symbol: X2
+#         distribution: {name: rnorm, args: [0.0, 1.0]}
 #   parameter:
 #     J: 5
 #     index_target_frac: 0.10
 #     coefficient_distribution:
 #       name: rnorm
 #       args: [0.0, 0.5]
-#   data:
-#     n_obs: 20
-#     epsilon: 0.5
-#     predictors:
-#       - symbol: X1
-#         distribution: {name: rexp, args: [1.0]}
-#       - symbol: X2
-#         distribution: {name: rnorm, args: [0.0, 1.0]}
 # ======================================================================
 
 # ── Design matrix helpers ───────────────────────────────────────────────
@@ -104,22 +111,19 @@ softmax_scalar <- function(x) {
 #' Generate multinomial logistic regression data
 #'
 #' Uses the true coefficient vector param_0 from the parameter spec to
-#' generate categorical responses. Applies epsilon smoothing to ensure
-#' all categories appear at least once: each missing category receives
-#' one pseudo-observation placed at a randomly selected observed covariate
-#' row. Random placement avoids the artificial covariate concentration
-#' that results from placing all pseudo-observations at the column means,
-#' which can cause severe MLE instability when many categories are absent.
+#' generate categorical responses. No smoothing or augmentation is applied
+#' to the generated data — zero-count categories are a natural consequence
+#' of sampling from a concentrated distribution at high psi_0 and are
+#' included as-is. MLE stabilization is handled separately in beta_mle_fn().
 #'
 #' @param config     Simulation config list.
 #' @param parameter  Parameter spec object with param_0 set.
 #' @return           A data frame with response Y and all covariates, with
-#'   attributes "terms" and "J" set.
+#'   attributes "terms", "J", and "n_obs" set.
 generate_data <- function(config, parameter) {
   data_cfg <- config$data
   param_cfg <- config$parameter
   n <- data_cfg$n_obs
-  epsilon <- data_cfg$epsilon %||% 0
   formula_str <- data_cfg$formula
   J <- param_cfg$J
 
@@ -144,21 +148,6 @@ generate_data <- function(config, parameter) {
   eta <- X_design %*% beta_0
   probs <- t(apply(cbind(0, eta), 1, softmax_scalar))
   Y <- apply(probs, 1, \(p) sample.int(J, 1L, prob = p))
-
-  # ── Epsilon smoothing: add pseudo-obs for zero-count categories ───────
-  # Each missing category receives one pseudo-observation placed at a
-  # randomly selected observed covariate row, spreading pseudo-obs across
-  # the covariate space rather than concentrating them at the column means.
-  if (epsilon > 0) {
-    zero_cats <- setdiff(seq_len(J), unique(Y))
-    if (length(zero_cats) > 0L) {
-      idx <- sample.int(n, length(zero_cats), replace = TRUE)
-      pseudo <- covariate_df[idx, , drop = FALSE]
-      rownames(pseudo) <- NULL
-      covariate_df <- rbind(covariate_df, pseudo)
-      Y <- c(Y, zero_cats)
-    }
-  }
 
   # ── Assemble final data frame ─────────────────────────────────────────
   # Natural factor ordering (levels = 1:J) so nnet::multinom uses

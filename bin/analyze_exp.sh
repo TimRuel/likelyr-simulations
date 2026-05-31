@@ -11,8 +11,8 @@ set -euo pipefail
 #   • Calls bin/analyze_sim.sh for each simulation
 #   • Skips simulations with no iterations directory or no
 #     completed iter_* folders
-#   • Skips simulations that appear to still be running
-#     (a model.rds written within the last 2 hours)
+#   • Skips simulations without a COMPLETE flag file,
+#     indicating the simulation job is still running
 #   • Simulations already analyzed are skipped by analyze_sim.sh
 # ============================================================
 
@@ -94,11 +94,9 @@ for SIM_YML in "${SIM_YMLS[@]}"; do
     continue
   fi
 
-  # Skip if a model.rds was written within the last 2 hours,
-  # indicating the simulation is likely still running
-  N_RECENT=$(find "$ITER_DIR" -name "model.rds" -mmin -120 | wc -l)
-  if [[ "$N_RECENT" -gt 0 ]]; then
-    echo "⏭  Skipping ${SIM_ID} — ${N_RECENT} iterations written in last 2 hours (likely still running)"
+  # Skip if no COMPLETE flag — simulation job has not finished
+  if [[ ! -f "${SIM_DIR}/COMPLETE" ]]; then
+    echo "⏭  Skipping ${SIM_ID} — no COMPLETE flag (still running or incomplete)"
     continue
   fi
 
