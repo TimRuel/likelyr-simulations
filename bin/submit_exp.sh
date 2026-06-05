@@ -60,7 +60,7 @@ echo "🧪 Experiment config: $EXP_YML"
 # ===============================
 EXP_VERSION="$(grep -m1 '^\s*version:' "$EXP_YML" | sed 's/.*version:\s*//' | tr -d '[:space:]"')"
 EXP_RUN_DIR="$(grep -m1 '^\s*exp_dir:' "$EXP_YML" | sed 's/.*exp_dir:\s*//' | tr -d '[:space:]"')"
-N_ITER="$(awk '/^simulation:/{found=1} found && /^\s+iterations:/{print $2; exit}' "$EXP_YML")"
+N_ITER="$(awk '/^base_simulation:/{found=1} found && /^\s+iterations:/{print $2; exit}' "$EXP_YML")"
 
 if [[ -z "$EXP_VERSION" ]]; then
   echo "❌ ERROR: experiment\$version missing or unparseable in $EXP_YML"

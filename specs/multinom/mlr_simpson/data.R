@@ -25,13 +25,14 @@
 #   counts in natural category order and is safe to index by position.
 #
 # Zero-count categories:
-#   No epsilon smoothing is applied to the generated data. When psi_0 is
-#   high, the data-generating distribution is concentrated and zero-count
-#   categories are expected. Resampling or augmenting the dataset to
-#   ensure all categories appear would bias the simulation by excluding
-#   datasets that are typical at that parameter value. MLE stabilization
-#   for zero-count categories is handled in beta_mle_fn() via
-#   pseudo-observation augmentation scoped to MLE fitting only.
+#   When psi_0 is high, the data-generating distribution is concentrated
+#   and zero-count categories are expected. One pseudo-observation is added
+#   per absent category, placed at the observed covariate column means.
+#   This minimizes leverage on the estimated regression coefficients while
+#   ensuring all categories are represented in the likelihood. The "n_obs"
+#   attribute records the original observation count so that x_0 =
+#   colMeans(X_design) is computed from observed rows only, excluding
+#   pseudo-observations.
 #
 # Config structure:
 #   data:
@@ -111,10 +112,13 @@ softmax_scalar <- function(x) {
 #' Generate multinomial logistic regression data
 #'
 #' Uses the true coefficient vector param_0 from the parameter spec to
-#' generate categorical responses. No smoothing or augmentation is applied
-#' to the generated data — zero-count categories are a natural consequence
-#' of sampling from a concentrated distribution at high psi_0 and are
-#' included as-is. MLE stabilization is handled separately in beta_mle_fn().
+#' generate categorical responses. If any categories are absent from the
+#' generated data, one pseudo-observation is added per absent category,
+#' placed at the observed covariate column means. This minimizes leverage
+#' on the estimated regression coefficients while stabilizing MLE fitting
+#' and likelihood evaluation uniformly across all inference steps. The
+#' "n_obs" attribute records the original observation count so that
+#' x_0 = colMeans(X_design) is computed from observed rows only.
 #'
 #' @param config     Simulation config list.
 #' @param parameter  Parameter spec object with param_0 set.
@@ -149,9 +153,28 @@ generate_data <- function(config, parameter) {
   probs <- t(apply(cbind(0, eta), 1, softmax_scalar))
   Y <- apply(probs, 1, \(p) sample.int(J, 1L, prob = p))
 
+  # ── Add pseudo-obs for zero-count categories ──────────────────────────
+  # Each absent category receives one pseudo-observation placed at the
+  # observed covariate column means. Placement at the means minimizes
+  # leverage on the estimated regression coefficients.
+  zero_cats <- setdiff(seq_len(J), unique(Y))
+  if (length(zero_cats) > 0L) {
+    col_means <- lapply(as.data.frame(covariate_df), mean)
+    pseudo <- as.data.frame(col_means)[
+      rep(1L, length(zero_cats)),
+      ,
+      drop = FALSE
+    ]
+    rownames(pseudo) <- NULL
+    covariate_df <- rbind(covariate_df, pseudo)
+    Y <- c(Y, zero_cats)
+  }
+
   # ── Assemble final data frame ─────────────────────────────────────────
   # Natural factor ordering (levels = 1:J) so nnet::multinom uses
   # category 1 as baseline and table(data$Y) is safe to index by position.
+  # n_obs records the original observation count, excluding pseudo-obs,
+  # so that x_0 = colMeans(X_design) is computed from observed rows only.
   Y_factor <- factor(Y, levels = seq_len(J))
 
   data <- data.frame(Y = Y_factor) |>
