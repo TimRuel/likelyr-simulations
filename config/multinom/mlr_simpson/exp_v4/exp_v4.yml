@@ -1,0 +1,242 @@
+experiment:
+  version: exp_v4
+  distribution: multinomial
+  model: mlr
+  estimand: simpson
+  seed_base: 8000
+  specs_dir: /gpfs/home/tbr0780/likelyr-simulations/specs/multinom/mlr_simpson
+  exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/mlr_simpson/exp_v4
+test:
+  simulation.iterations: 5
+  sampler.min_branches: 10
+  sampler.branch_buffer: 5
+  parameter.J: 10
+  data.n_obs: 80
+  parameter.index_target_frac: 0.3
+design:
+  type: points
+  require_existing_paths: yes
+  points:
+  # - parameter.J: 5
+  #   data.n_obs: 20
+  #   parameter.index_target_frac: 0.1
+  # - parameter.J: 5
+  #   data.n_obs: 20
+  #   parameter.index_target_frac: 0.3
+  # - parameter.J: 5
+  #   data.n_obs: 20
+  #   parameter.index_target_frac: 0.5
+  # - parameter.J: 5
+  #   data.n_obs: 20
+  #   parameter.index_target_frac: 0.7
+  # - parameter.J: 5
+  #   data.n_obs: 30
+  #   parameter.index_target_frac: 0.1
+  # - parameter.J: 5
+  #   data.n_obs: 30
+  #   parameter.index_target_frac: 0.3
+  # - parameter.J: 5
+  #   data.n_obs: 30
+  #   parameter.index_target_frac: 0.5
+  # - parameter.J: 5
+  #   data.n_obs: 30
+  #   parameter.index_target_frac: 0.7
+  # - parameter.J: 5
+  #   data.n_obs: 40
+  #   parameter.index_target_frac: 0.1
+  # - parameter.J: 5
+  #   data.n_obs: 40
+  #   parameter.index_target_frac: 0.3
+  # - parameter.J: 5
+  #   data.n_obs: 40
+  #   parameter.index_target_frac: 0.5
+  # - parameter.J: 5
+  #   data.n_obs: 40
+  #   parameter.index_target_frac: 0.7
+  # - parameter.J: 10
+  #   data.n_obs: 40
+  #   parameter.index_target_frac: 0.1
+  # - parameter.J: 10
+  #   data.n_obs: 40
+  #   parameter.index_target_frac: 0.3
+  # - parameter.J: 10
+  #   data.n_obs: 40
+  #   parameter.index_target_frac: 0.5
+  # - parameter.J: 10
+  #   data.n_obs: 40
+  #   parameter.index_target_frac: 0.7
+  # - parameter.J: 10
+  #   data.n_obs: 60
+  #   parameter.index_target_frac: 0.1
+  # - parameter.J: 10
+  #   data.n_obs: 60
+  #   parameter.index_target_frac: 0.3
+  # - parameter.J: 10
+  #   data.n_obs: 60
+  #   parameter.index_target_frac: 0.5
+  # - parameter.J: 10
+  #   data.n_obs: 60
+  #   parameter.index_target_frac: 0.7
+  # - parameter.J: 10
+  #   data.n_obs: 80
+  #   parameter.index_target_frac: 0.1
+  - parameter.J: 10
+    data.n_obs: 80
+    parameter.index_target_frac: 0.3
+  # - parameter.J: 10
+  #   data.n_obs: 80
+  #   parameter.index_target_frac: 0.5
+  # - parameter.J: 10
+  #   data.n_obs: 80
+  #   parameter.index_target_frac: 0.7
+  # - parameter.J: 15
+  #   data.n_obs: 60
+  #   parameter.index_target_frac: 0.1
+  # - parameter.J: 15
+  #   data.n_obs: 60
+  #   parameter.index_target_frac: 0.3
+  # - parameter.J: 15
+  #   data.n_obs: 60
+  #   parameter.index_target_frac: 0.5
+  # - parameter.J: 15
+  #   data.n_obs: 60
+  #   parameter.index_target_frac: 0.7
+  # - parameter.J: 15
+  #   data.n_obs: 90
+  #   parameter.index_target_frac: 0.1
+  # - parameter.J: 15
+  #   data.n_obs: 90
+  #   parameter.index_target_frac: 0.3
+  # - parameter.J: 15
+  #   data.n_obs: 90
+  #   parameter.index_target_frac: 0.5
+  # - parameter.J: 15
+  #   data.n_obs: 90
+  #   parameter.index_target_frac: 0.7
+  # - parameter.J: 15
+  #   data.n_obs: 120
+  #   parameter.index_target_frac: 0.1
+  # - parameter.J: 15
+  #   data.n_obs: 120
+  #   parameter.index_target_frac: 0.3
+  # - parameter.J: 15
+  #   data.n_obs: 120
+  #   parameter.index_target_frac: 0.5
+  # - parameter.J: 15
+  #   data.n_obs: 120
+  #   parameter.index_target_frac: 0.7
+  # - parameter.J: 20
+  #   data.n_obs: 80
+  #   parameter.index_target_frac: 0.1
+  # - parameter.J: 20
+  #   data.n_obs: 80
+  #   parameter.index_target_frac: 0.3
+  # - parameter.J: 20
+  #   data.n_obs: 80
+  #   parameter.index_target_frac: 0.5
+  # - parameter.J: 20
+  #   data.n_obs: 80
+  #   parameter.index_target_frac: 0.7
+  # - parameter.J: 20
+  #   data.n_obs: 120
+  #   parameter.index_target_frac: 0.1
+  # - parameter.J: 20
+  #   data.n_obs: 120
+  #   parameter.index_target_frac: 0.3
+  # - parameter.J: 20
+  #   data.n_obs: 120
+  #   parameter.index_target_frac: 0.5
+  # - parameter.J: 20
+  #   data.n_obs: 120
+  #   parameter.index_target_frac: 0.7
+  # - parameter.J: 20
+  #   data.n_obs: 160
+  #   parameter.index_target_frac: 0.1
+  # - parameter.J: 20
+  #   data.n_obs: 160
+  #   parameter.index_target_frac: 0.3
+  # - parameter.J: 20
+  #   data.n_obs: 160
+  #   parameter.index_target_frac: 0.5
+  # - parameter.J: 20
+  #   data.n_obs: 160
+  #   parameter.index_target_frac: 0.7
+base_simulation:
+  iterations: 1100    
+  parameter:
+    J: ~
+    index_target_frac: 0.1
+    coefficient_distribution:
+      name: rnorm
+      args:
+      - 0.0
+      - 1.0
+  likelihood:
+    family: multinomial
+    link: logit
+  sampler:
+    min_branches: 200
+    branch_buffer: 50
+  traversal:
+    increment: 0.01
+    traversal_method: topdown
+    confidence_levels:
+    - 0.9
+    - 0.95
+    - 0.99
+    cutoff_buffer: 1.5
+    n_adjacent: 3
+    max_mode_shifts: 10
+    k_recent: 3
+    drop_multiplier: 10.0
+    cap_multiplier: 10.0
+    mode_gap_multiplier: 10.0
+    interval_buffer: 1.2
+    max_drop_frac: 10.0
+    resid_tol: 1.0e-3
+    profile_retry_on:
+    #  - monotonicity
+    - constraint
+    #  - drop
+    branch_retry_on:
+    #  - monotonicity
+    - constraint
+    #  - drop
+    rejection_reasons:
+      - empty_restricted_grid
+      - no_feasible_grid_point
+      # - mode_on_psi_boundary
+      - mode_locator_failed
+      - mode_eval_failed_after_snap
+      # - mode_too_low
+      - oscillation
+      - mode_shift_exhausted
+      - jump_left
+      - jump_right
+    use_mode_locator_for_profile: TRUE
+  solver:
+    localsolver: SLSQP
+    control:
+      xtol_rel: 1.0e-08
+      maxeval: 1000
+    localtol: 1.0e-06
+    max_retries: 100
+  execution:
+    mode: serial
+    packages: likelyr
+  data:
+    n_obs: ~
+    formula: Y ~ X1 + X2
+    predictors:
+    - symbol: X1
+      distribution:
+        name: rnorm
+        args:
+        - 0.0
+        - 1.0
+    - symbol: X2
+      distribution:
+        name: rnorm
+        args:
+        - 0.0
+        - 1.0

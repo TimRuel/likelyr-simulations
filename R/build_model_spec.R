@@ -24,6 +24,13 @@ suppressPackageStartupMessages({
 #   • NO data generation
 #   • NO calibration
 #   • Refuses to overwrite an existing model spec
+#
+# Seeding:
+#   parameter$seed (= simulation$seed_base) is set before
+#   make_parameter() to ensure param_0 is identical across any
+#   re-runs of init_exp.sh for the same simulation. The seed is
+#   reset to NULL after make_parameter() so it does not bleed
+#   into the construction of other spec objects.
 # ============================================================
 
 # ============================================================
@@ -156,8 +163,26 @@ if (length(missing_fns)) {
 
 # ============================================================
 # 8. Build spec objects
+#
+# parameter$seed (= simulation$seed_base) is set before
+# make_parameter() to ensure param_0 is reproducible across
+# re-runs. It is reset to NULL immediately after so that RNG
+# state does not bleed into the remaining spec constructors.
 # ============================================================
+parameter_seed <- config$parameter$seed
+
+if (is.null(parameter_seed)) {
+  stop(
+    "parameter$seed must be defined in the sim yaml.\n",
+    "Expected: parameter$seed = simulation$seed_base (set by expand_design.R).",
+    call. = FALSE
+  )
+}
+
+set.seed(as.integer(parameter_seed))
 parameter <- spec_env$make_parameter(config)
+set.seed(NULL)
+
 likelihood <- spec_env$make_likelihood(config)
 estimand <- spec_env$make_estimand(config, parameter)
 sampler <- spec_env$make_sampler(config)
