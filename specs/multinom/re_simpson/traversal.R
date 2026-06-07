@@ -11,10 +11,17 @@
 # function is evaluated over the full psi domain [1/J, 1) via golden
 # section search, exploiting unimodality to locate the branch mode.
 #
+# param_mle may be vec(B_mle) or c(vec(B_mle), vech(chol(Sigma_hat)))
+# depending on fix_Sigma. Only the first p*(J-1) elements are used to
+# construct B_mle_mat. The remaining elements (if any) are appended to
+# the B_hat warm start so that the branch optimizer always receives a
+# consistently-dimensioned param vector.
+#
 # param_mle is used as the warm start for all branch evaluations because
 # omega_hat and the model parameter live in different spaces
-# (omega_dim = J vs param_dim = p*(J-1)). Passing omega_hat as param_init
-# would produce a dimension mismatch inside branch_evaluator.
+# (omega_dim = J vs param_dim = p*(J-1) or p*(J-1) + (J-1)*J/2).
+# Passing omega_hat as param_init would produce a dimension mismatch
+# inside branch_evaluator.
 # ======================================================================
 
 simpson_mode_locator_fn <- function(
@@ -37,22 +44,27 @@ simpson_mode_locator_fn <- function(
   lower <- min(psi_interval)
   upper <- max(psi_interval)
 
-  # Precompute x_0 and B_mle_mat once at construction time
+  # Precompute x_0 and B_mle_mat once at construction time.
+  # Extract only the B part of param_mle — param_mle may be longer than
+  # p*(J-1) when fix_Sigma = FALSE.
   x_0 <- x_reference(data)
   p <- length(x_0)
   J <- omega_dim
-  B_mle_mat <- matrix(param_mle, nrow = p, ncol = J - 1L)
+  n_B <- p * (J - 1L)
+  B_mle_mat <- matrix(param_mle[seq_len(n_B)], nrow = p, ncol = J - 1L)
   x0_norm2 <- sum(x_0^2)
 
-  # Construct a cap-specific warm start from omega_hat via rank-1
-  # adjustment of B_mle along x_0, matching theta(x_0; B) = omega_hat.
-  # This is identical to make_B_hat() in likelihood.R.
+  # Construct a warm start from omega_hat via rank-1 adjustment of B_mle
+  # along x_0, matching theta(x_0; B) = omega_hat (identical to
+  # make_B_hat() in likelihood.R). When fix_Sigma = FALSE, the Sigma
+  # part of param_mle is appended unchanged so the branch optimizer
+  # receives a consistently-dimensioned warm start.
   make_warm_start <- function(omega_hat) {
     eta_0 <- log(omega_hat[-1L]) - log(omega_hat[1L])
     eta_mle <- as.numeric(x_0 %*% B_mle_mat)
     delta <- eta_0 - eta_mle
     B_hat <- B_mle_mat + outer(x_0, delta) / x0_norm2
-    as.numeric(B_hat)
+    c(as.numeric(B_hat), param_mle[seq(n_B + 1L, length(param_mle))])
   }
 
   function(omega_hat, psi_hint = NULL) {
@@ -100,16 +112,12 @@ simpson_mode_locator_fn <- function(
 
     psi_hat <- (a + b) / 2
 
-    # -------------------------------------------------------------------
     # Snap to nearest grid point, anchored at lower
-    # -------------------------------------------------------------------
     psi_hat_snapped <- lower +
       round((psi_hat - lower) / increment) * increment
     psi_hat_snapped <- min(max(psi_hat_snapped, lower), upper)
 
-    # -------------------------------------------------------------------
     # Final evaluation at snapped mode
-    # -------------------------------------------------------------------
     result <- tryCatch(
       branch_evaluator(psi_hat_snapped, init_guess),
       error = function(e) NULL

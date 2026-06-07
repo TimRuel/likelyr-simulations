@@ -1,48 +1,44 @@
 experiment:
-  version: exp_v1
+  version: exp_v6
   distribution: multinomial
-  model: re
+  model: mlr
   estimand: simpson
-  seed_base: 9000
-  specs_dir: /gpfs/home/tbr0780/likelyr-simulations/specs/multinom/re_simpson
-  exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/re_simpson/exp_v1
+  seed_base: 8000
+  specs_dir: /gpfs/home/tbr0780/likelyr-simulations/specs/multinom/mlr_simpson
+  exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/mlr_simpson/exp_v6
 simulation:
-  sim_id: sim_01
-  seed_base: 109000
+  sim_id: sim_04
+  seed_base: 408000
   iterations: 1100
 design:
   design_type: points
   overrides:
-    parameter.J: 4
-    data.n_clusters: 50
-    data.m: 10
+    parameter.J: 5
+    data.n_obs: 60
     parameter.index_target_frac: 0.3
 test:
   simulation.iterations: 5
   sampler.min_branches: 10
   sampler.branch_buffer: 5
-  parameter.J: 4
-  data.n_clusters: 50
-  data.m: 10
+  parameter.J: 10
+  data.n_obs: 80
   parameter.index_target_frac: 0.3
 parameter:
-  J: 4
+  J: 5
   index_target_frac: 0.3
-  sigma2_u: 1.0
   coefficient_distribution:
     name: rnorm
     args:
     - 0.0
     - 0.5
-  seed: 109000
+  seed: 408000
 likelihood:
   family: multinomial
   link: logit
-  fix_Sigma: no
 sampler:
   min_branches: 200
   branch_buffer: 50
-  seed_base: 119000
+  seed_base: 418000
 traversal:
   increment: 0.01
   traversal_method: topdown
@@ -65,7 +61,6 @@ traversal:
   rejection_reasons:
   - empty_restricted_grid
   - no_feasible_grid_point
-  - mode_on_psi_boundary
   - mode_locator_failed
   - mode_eval_failed_after_snap
   - oscillation
@@ -84,10 +79,8 @@ execution:
   mode: serial
   packages: likelyr
 data:
-  n_clusters: 50
-  m: 10
+  n_obs: 60
   formula: Y ~ X1 + X2
-  epsilon: 0.5
   predictors:
   - symbol: X1
     distribution:
@@ -101,4 +94,4 @@ data:
       args:
       - 0.0
       - 1.0
-  seed_base: 129000
+  seed_base: 428000

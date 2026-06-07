@@ -14,11 +14,17 @@
 # machinery applies without modification. See Section sec:parameters-of-
 # interest for the full justification.
 #
+# param may be vec(B) or c(vec(B), vech(chol(Sigma))) depending on
+# fix_Sigma. All estimand functions extract only the first p*(J-1)
+# elements before reshaping into B, discarding the Sigma part. This
+# ensures psi_fn, psi_jac, and make_psi_fns are correct under both
+# fix_Sigma = TRUE and fix_Sigma = FALSE without any config dependency.
+#
 # psi_fn, psi_jac, theta_at_x0, and make_psi_fns are identical to the
-# fixed effects model. The only change is in make_estimand, where psi_0
-# is now defined conditionally as D(theta(x_bar_mc; B_0, 0)) rather than
-# as D(theta_bar(B_0)). This is consistent with the conditioning strategy
-# adopted for this model.
+# fixed effects model up to this extraction step. The only change is in
+# make_estimand, where psi_0 is defined conditionally as
+# D(theta(x_bar_mc; B_0, 0)) rather than as D(theta_bar(B_0)), consistent
+# with the conditioning strategy adopted for this model.
 #
 # x_0 is computed from observed rows only (attr "n_obs"), excluding
 # pseudo-observations added by epsilon smoothing.
@@ -38,12 +44,16 @@ x_reference <- function(data) {
 
 #' Conditional category probabilities at x_0 under B, with u_i = 0
 #'
-#' Setting u_i = 0 (median cluster) eliminates the random effects
-#' dependence. The resulting probability vector is identical to that
-#' of the fixed effects model evaluated at x_0.
+#' Extracts only the first p*(J-1) elements of param before reshaping,
+#' so this function is safe to call with packed params (fix_Sigma = FALSE).
+#'
+#' @param param  Numeric vector: vec(B) or c(vec(B), vech(chol(Sigma))).
+#' @param x0     Reference covariate vector of length p.
+#' @param J      Number of categories.
+#' @return       Numeric vector of length J (probability vector).
 theta_at_x0 <- function(param, x0, J) {
   p <- length(x0)
-  beta <- matrix(param, nrow = p, ncol = J - 1L)
+  beta <- matrix(param[seq_len(p * (J - 1L))], nrow = p, ncol = J - 1L)
   eta <- as.numeric(x0 %*% beta)
   softmax_scalar(c(0, eta))
 }
@@ -56,6 +66,10 @@ psi_fn <- function(param, data) {
 }
 
 #' Jacobian of Simpson's index at x_0 with u_i = 0
+#'
+#' Returns a 1 x p*(J-1) matrix. The Sigma part of param (if present)
+#' does not affect psi so its Jacobian entries are zero; they are omitted
+#' here since the constraint machinery only operates on the B part.
 psi_jac <- function(param, data) {
   J <- attr(data, "J")
   x0 <- x_reference(data)
@@ -91,6 +105,9 @@ make_psi_fns <- function(data) {
 #' population mean covariate. Because u_i = 0 is substituted, no
 #' Monte Carlo integration over the random effects distribution is
 #' needed, and psi_0 is simply D(softmax(c(0, B_0^T x_bar_mc))).
+#'
+#' parameter$param_0 may be vec(B_0) or c(vec(B_0), vech(chol(Sigma_0)));
+#' theta_at_x0 extracts only the B part so psi_0 is correct under both.
 #'
 #' @param config     Simulation config list. Must contain parameter$J.
 #' @param parameter  Parameter spec with param_0 and extra$x_bar_mc.

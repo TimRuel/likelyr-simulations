@@ -24,8 +24,15 @@
 # MLE:
 #   beta_mle_fn fits mblogit() with catCov = "free" and returns param_mle
 #   with attr "Sigma_hat", "theta_bar_hat", and "fix_Sigma" attached.
-#   When fix_Sigma = FALSE, param_mle also includes vech(chol(Sigma_hat))
-#   so the branch optimizer can use it as a warm start for Sigma.
+#
+#   fix_Sigma = TRUE:  param_mle = vec(B_hat), length p*(J-1).
+#   fix_Sigma = FALSE: param_mle = c(vec(B_hat), vech(chol(Sigma_hat))),
+#     providing a warm start for Sigma in the branch optimizer.
+#
+# param_0 dimension mirrors param_mle:
+#   fix_Sigma = TRUE:  vec(B_0), length p*(J-1)
+#   fix_Sigma = FALSE: c(vec(B_0), vech(chol(Sigma_0))),
+#                      length p*(J-1) + (J-1)*J/2
 # ======================================================================
 
 # ── Monte Carlo helpers ─────────────────────────────────────────────────
@@ -141,8 +148,8 @@ generate_beta_0 <- function(
 #'   "theta_bar_hat" — estimated conditional probability vector at x_0, u=0
 #'   "fix_Sigma"     — logical, read from config$likelihood$fix_Sigma
 #'
-#' When fix_Sigma = TRUE:  param_mle = vec(B_hat), length p*(J-1)
-#' When fix_Sigma = FALSE: param_mle = c(vec(B_hat), vech(chol(Sigma_hat))),
+#' fix_Sigma = TRUE:  param_mle = vec(B_hat), length p*(J-1).
+#' fix_Sigma = FALSE: param_mle = c(vec(B_hat), vech(chol(Sigma_hat))),
 #'   providing a warm start for Sigma in the branch optimizer.
 #'
 #' @param config  Simulation config list.
@@ -159,8 +166,7 @@ make_beta_mle_fn <- function(config) {
       formula = formula(attr(data, "terms")),
       random = ~ 1 | cluster,
       catCov = "free",
-      data = data[seq_len(attr(data, "n_obs")), ],
-      verbose = FALSE
+      data = data[seq_len(attr(data, "n_obs")), ]
     )
 
     # Extract B_hat: reshape from all-categories-per-predictor ordering
@@ -174,7 +180,6 @@ make_beta_mle_fn <- function(config) {
     if (fix_Sigma) {
       param <- as.numeric(B_hat)
     } else {
-      # Include vech(chol(Sigma_hat)) as warm start for branch optimizer
       L <- t(chol(Sigma_hat))
       param <- c(as.numeric(B_hat), L[lower.tri(L, diag = TRUE)])
     }
@@ -196,6 +201,11 @@ make_beta_mle_fn <- function(config) {
 
 #' Build a parameter_spec for the random effects multinomial model
 #'
+#' param_0 dimension matches the inference parameter:
+#'   fix_Sigma = TRUE:  vec(B_0), length p*(J-1)
+#'   fix_Sigma = FALSE: c(vec(B_0), vech(chol(Sigma_0))),
+#'                      length p*(J-1) + (J-1)*J/2
+#'
 #' Extra fields stored on the parameter spec:
 #'   $x_bar_mc    — Monte Carlo covariate mean, for estimand evaluation
 #'   $Sigma_0     — true random effects covariance (vectorised), for data
@@ -213,6 +223,7 @@ make_parameter <- function(config) {
   J <- config$parameter$J
   f <- config$parameter$index_target_frac
   sigma2_u <- config$parameter$sigma2_u %||% 1.0
+  fix_Sigma <- config$likelihood$fix_Sigma %||% TRUE
   Sigma_0 <- sigma2_u * diag(J - 1L)
 
   psi_target <- 1 / J + f * (1 - 1 / J)
@@ -222,10 +233,19 @@ make_parameter <- function(config) {
   beta_0 <- generate_beta_0(config, X_mc, U_mc, psi_target)
   theta_bar_0 <- compute_theta_bar_re(beta_0, X_mc, U_mc)
 
+  # param_0 mirrors the param_mle convention so the branch optimizer
+  # always receives a consistently-dimensioned warm start.
+  param_0 <- if (fix_Sigma) {
+    as.numeric(beta_0)
+  } else {
+    L_0 <- t(chol(Sigma_0))
+    c(as.numeric(beta_0), L_0[lower.tri(L_0, diag = TRUE)])
+  }
+
   likelyr::parameter_spec(
     name = "Multinomial RE logistic regression coefficients",
     param_mle_fn = make_beta_mle_fn(config),
-    param_0 = as.numeric(beta_0),
+    param_0 = param_0,
     param_lower = NULL,
     param_upper = NULL,
     omega_dim = J,

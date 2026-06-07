@@ -17,6 +17,12 @@
 #   B = [beta_2 | ... | beta_J] in R^{p x (J-1)}, stored as vec(B).
 #   Sigma_0 = sigma2_u * I_{J-1} (diagonal, specified via config).
 #
+#   parameter$param_0 may be:
+#     fix_Sigma = TRUE:  vec(B_0), length p*(J-1)
+#     fix_Sigma = FALSE: c(vec(B_0), vech(chol(Sigma_0))), longer vector
+#   Only the first p*(J-1) elements are used here; the Sigma part is
+#   ignored since the true Sigma_0 is read from parameter$extra$Sigma_0.
+#
 # The estimand is evaluated at x_0 = colMeans(X_design[1:n_obs,]) and
 # u_i = 0 (median cluster). n_obs = n_clusters * m (pre-smoothing).
 #
@@ -43,7 +49,6 @@
 # ======================================================================
 
 # ── Design matrix helpers ───────────────────────────────────────────────
-# (identical to fixed effects model — shared via sourcing)
 
 get_X_design <- function(data) {
   trms <- attr(data, "terms")
@@ -83,6 +88,10 @@ softmax_scalar <- function(x) {
 
 #' Generate clustered multinomial logistic regression data
 #'
+#' parameter$param_0 may be vec(B_0) or c(vec(B_0), vech(chol(Sigma_0)))
+#' depending on fix_Sigma. Only the first p*(J-1) elements are used to
+#' extract B_0; the true Sigma_0 is always read from parameter$extra$Sigma_0.
+#'
 #' @param config     Simulation config list.
 #' @param parameter  Parameter spec with param_0 and extra$Sigma_0 set.
 #' @return           Data frame with Y, cluster, and covariates, with
@@ -114,15 +123,20 @@ generate_data <- function(config, parameter) {
   X_design <- get_X_design(tmp_data)
   p <- ncol(X_design)
 
-  # ── Draw random effects u_i ~ N(0, Sigma_0) ───────────────────────────
+  # ── Draw random effects u_i ~ N(0, Sigma_0) ──────────────────────────
   U <- MASS::mvrnorm(n_clusters, mu = rep(0, J - 1L), Sigma = Sigma_0)
-  # U is n_clusters x (J-1); expand to observation level
   cluster_id <- rep(seq_len(n_clusters), each = m)
   U_obs <- U[cluster_id, , drop = FALSE] # n_total x (J-1)
 
   # ── Draw categorical responses ────────────────────────────────────────
-  # Linear predictor: x_it^T B + u_i (random intercept added to each logit)
-  B_0 <- matrix(parameter$param_0, nrow = p, ncol = J - 1L)
+  # Extract only the B part of param_0 — param_0 may be longer than
+  # p*(J-1) when fix_Sigma = FALSE, in which case the trailing
+  # vech(chol(Sigma_0)) elements must be discarded before reshaping.
+  B_0 <- matrix(
+    parameter$param_0[seq_len(p * (J - 1L))],
+    nrow = p,
+    ncol = J - 1L
+  )
   eta <- X_design %*% B_0 + U_obs # n_total x (J-1)
   probs <- t(apply(cbind(0, eta), 1, softmax_scalar))
   Y <- apply(probs, 1, \(p) sample.int(J, 1L, prob = p))
@@ -139,7 +153,6 @@ generate_data <- function(config, parameter) {
       rownames(pseudo_covs) <- NULL
       covariate_df <- rbind(covariate_df, pseudo_covs)
       Y <- c(Y, zero_cats)
-      # Assign each pseudo-obs to a new singleton cluster
       new_cluster_ids <- seq(n_clusters + 1L, n_clusters + n_pseudo)
       cluster_id <- c(cluster_id, new_cluster_ids)
     }
@@ -153,21 +166,9 @@ generate_data <- function(config, parameter) {
 
   attr(data, "terms") <- terms(as.formula(formula_str), data = data)
   attr(data, "J") <- J
-  attr(data, "n_obs") <- n_total # pre-smoothing count
+  attr(data, "n_obs") <- n_total
   attr(data, "n_clusters") <- n_clusters
   attr(data, "m") <- m
 
   data
-}
-
-# ── Data Spec Constructor ───────────────────────────────────────────────
-
-make_data <- function(config) {
-  if (is.null(config$data)) {
-    stop("Config must contain a 'data' section.", call. = FALSE)
-  }
-  likelyr::data_spec(
-    name = "Clustered multinomial logistic regression data",
-    generate_data = generate_data
-  )
 }
