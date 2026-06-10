@@ -1,78 +1,59 @@
 # ======================================================================
 # Data Generation (Multinomial Logistic Regression Parameterization)
 #
-# Generates data for a multinomial logistic regression model. Covariates
-# are drawn from config-specified distributions. True regression
-# coefficients are found via generate_beta_0() (defined in parameter.R)
-# to satisfy a target Simpson's index psi_0 = 1/J + f*(1 - 1/J).
+# Generates data for a multinomial logistic regression model. Supports
+# both continuous and factor covariates. The reference covariate vector
+# x_0 is determined at generation time from the config reference level
+# and stored as attr(data, "x_0"), making it fixed and independent of
+# the observed sample. This eliminates the mismatch between the true
+# psi_0 (defined conditionally at the config reference level) and the
+# estimated psi_hat (evaluated at the same fixed x_0) that arises when
+# x_0 = colMeans(X_design) is used as a random, data-dependent reference.
 #
-# Depends on parameter.R for:
-#   draw_X_mc()          — Monte Carlo covariate design matrix
-#   compute_theta_bar()  — marginal category probabilities
-#   generate_beta_0()    — constrained coefficient search
+# Predictor config structure:
+#
+#   Continuous predictor:
+#     predictors:
+#       - symbol: X1
+#         distribution: {name: rnorm, args: [0.0, 1.0]}
+#
+#   Factor predictor:
+#     predictors:
+#       - symbol: habitat
+#         type: factor
+#         levels: [forest, grassland, wetland, scrub]
+#         reference: forest
+#         probabilities: [0.25, 0.25, 0.25, 0.25]   # optional, uniform default
+#
+# The reference level of each factor predictor defines x_0 via the
+# model formula's design matrix. For continuous predictors, the
+# reference is taken as 0 (centering is assumed or irrelevant when
+# discrete factors carry all the structural interest).
 #
 # Parameterization convention:
 #   Category 1 is the baseline; its coefficient vector is fixed at 0.
 #   The free coefficient matrix is B = [β_2 | ... | β_J] ∈ R^{p×(J-1)},
 #   stored as vec(B) = (β_2^T, ..., β_J^T)^T ∈ R^{p(J-1)}.
-#   The conditional probability vector is
-#     theta_j = exp(x^T β_j) / sum_{k=1}^{J} exp(x^T β_k),
-#   where β_1 = 0. In matrix form: cbind(0, X %*% B) gives the n x J
-#   linear predictor matrix with the baseline column prepended.
-#
-#   data$Y uses natural factor ordering (levels = 1:J), so nnet::multinom
-#   automatically uses category 1 as its reference. table(data$Y) returns
-#   counts in natural category order and is safe to index by position.
 #
 # Zero-count categories:
-#   When psi_0 is high, the data-generating distribution is concentrated
-#   and zero-count categories are expected. One pseudo-observation is added
-#   per absent category, placed at the observed covariate column means.
-#   This minimizes leverage on the estimated regression coefficients while
-#   ensuring all categories are represented in the likelihood. The "n_obs"
-#   attribute records the original observation count so that x_0 =
-#   colMeans(X_design) is computed from observed rows only, excluding
-#   pseudo-observations.
-#
-# Config structure:
-#   data:
-#     formula: "Y ~ X1 + X2"
-#     n_obs: 20
-#     predictors:
-#       - symbol: X1
-#         distribution: {name: rnorm, args: [0.0, 1.0]}
-#       - symbol: X2
-#         distribution: {name: rnorm, args: [0.0, 1.0]}
-#   parameter:
-#     J: 5
-#     index_target_frac: 0.10
-#     coefficient_distribution:
-#       name: rnorm
-#       args: [0.0, 0.5]
+#   One pseudo-observation is added per absent category, placed at the
+#   observed covariate column means (for continuous) or the reference
+#   level (for factor). The "n_obs" attribute records the original
+#   observation count so that the stored x_0 is used, not recomputed.
 # ======================================================================
 
 # ── Design matrix helpers ───────────────────────────────────────────────
 
-#' Build the model design matrix from a data frame with a "terms" attribute
-#'
-#' @param data  Data frame with "terms" attribute encoding the model formula.
-#' @return      n x p model matrix with "terms" and "formula" attributes.
 get_X_design <- function(data) {
   trms <- attr(data, "terms")
   model_frame <- model.frame(trms, data = data)
   X_design <- model.matrix(trms, data = model_frame)
-
   attr(X_design, "original_model_frame") <- model_frame
   attr(X_design, "terms") <- trms
   attr(X_design, "formula") <- formula(trms)
-
   X_design
 }
 
-#' Build the response indicator matrix from a data frame with "terms" and "J"
-#'
-#' @param data  Data frame with "terms" and "J" attributes.
-#' @return      n x (J-1) integer indicator matrix (baseline category 1 dropped).
 get_Y_design <- function(data) {
   trms <- attr(data, "terms")
   response <- all.vars(trms)[attr(trms, "response")]
@@ -80,17 +61,12 @@ get_Y_design <- function(data) {
   J <- attr(data, "J")
   y_int <- as.integer(as.character(y))
   non_baseline <- seq(2L, J)
-
   outer(y_int, non_baseline, `==`) * 1L
 }
 
 # ── Internal helpers ────────────────────────────────────────────────────
 
-#' Draw n values from a named distribution specified in config
-#'
-#' @param dist_cfg  List with fields: name (character), args (list of scalars).
-#' @param n         Number of draws.
-#' @return          Numeric vector of length n.
+#' Draw n values from a distribution specified in config (numeric predictors)
 draw_from <- function(dist_cfg, n = 1L) {
   fn <- match.fun(dist_cfg$name)
   args <- c(list(n), dist_cfg$args)
@@ -98,32 +74,56 @@ draw_from <- function(dist_cfg, n = 1L) {
 }
 
 #' Numerically stable softmax over a single numeric vector (length J)
-#'
-#' Named with a dot prefix to avoid shadowing the matrix-valued softmax()
-#' defined in likelihood.R which operates on n x (J-1) linear predictor
-#' matrices.
 softmax_scalar <- function(x) {
   z <- x - max(x)
   exp(z) / sum(exp(z))
+}
+
+#' Generate n covariate values for one predictor (numeric or factor)
+generate_covariate <- function(pred, n) {
+  if (identical(pred$type, "factor")) {
+    probs <- pred$probabilities %||%
+      rep(1 / length(pred$levels), length(pred$levels))
+    factor(
+      sample(pred$levels, n, replace = TRUE, prob = probs),
+      levels = pred$levels
+    )
+  } else {
+    draw_from(pred$distribution, n)
+  }
+}
+
+#' Build the reference covariate row from the config predictor specs
+#'
+#' For factor predictors, uses pred$reference. For numeric predictors,
+#' uses 0. Returns a single-row data frame with correct types for use
+#' with model.matrix via get_X_design.
+#'
+#' @param config  Simulation config list.
+#' @return        Named list suitable for as.data.frame.
+build_reference_row <- function(config) {
+  lapply(config$data$predictors, function(pred) {
+    if (identical(pred$type, "factor")) {
+      factor(pred$reference, levels = pred$levels)
+    } else {
+      0
+    }
+  }) |>
+    setNames(sapply(config$data$predictors, `[[`, "symbol"))
 }
 
 # ── Data generation ─────────────────────────────────────────────────────
 
 #' Generate multinomial logistic regression data
 #'
-#' Uses the true coefficient vector param_0 from the parameter spec to
-#' generate categorical responses. If any categories are absent from the
-#' generated data, one pseudo-observation is added per absent category,
-#' placed at the observed covariate column means. This minimizes leverage
-#' on the estimated regression coefficients while stabilizing MLE fitting
-#' and likelihood evaluation uniformly across all inference steps. The
-#' "n_obs" attribute records the original observation count so that
-#' x_0 = colMeans(X_design) is computed from observed rows only.
+#' Supports continuous and factor predictors. Stores attr(data, "x_0")
+#' as the design vector for the config reference level — fixed across
+#' all datasets from the same population. This ensures psi_fn and
+#' psi_jac evaluate at the same reference as psi_0.
 #'
 #' @param config     Simulation config list.
 #' @param parameter  Parameter spec object with param_0 set.
-#' @return           A data frame with response Y and all covariates, with
-#'   attributes "terms", "J", and "n_obs" set.
+#' @return           Data frame with "terms", "J", "n_obs", "x_0" attributes.
 generate_data <- function(config, parameter) {
   data_cfg <- config$data
   param_cfg <- config$parameter
@@ -131,14 +131,24 @@ generate_data <- function(config, parameter) {
   formula_str <- data_cfg$formula
   J <- param_cfg$J
 
-  # ── Draw observed covariates ──────────────────────────────────────────
+  # ── Draw covariates ───────────────────────────────────────────────────
   covariate_df <- lapply(data_cfg$predictors, \(pred) {
-    vals <- draw_from(pred$distribution, n)
+    vals <- generate_covariate(pred, n)
     setNames(data.frame(vals), pred$symbol)
   }) |>
     do.call(what = cbind)
 
-  # ── Build design matrix for observed data ─────────────────────────────
+  # Fix factor levels after cbind (cbind can coerce factors to integers)
+  for (pred in data_cfg$predictors) {
+    if (identical(pred$type, "factor")) {
+      covariate_df[[pred$symbol]] <- factor(
+        covariate_df[[pred$symbol]],
+        levels = pred$levels
+      )
+    }
+  }
+
+  # ── Build design matrix ───────────────────────────────────────────────
   tmp_data <- covariate_df
   tmp_data[["Y"]] <- factor(rep(1L, n), levels = seq_len(J))
   attr(tmp_data, "terms") <- terms(as.formula(formula_str), data = tmp_data)
@@ -146,58 +156,69 @@ generate_data <- function(config, parameter) {
 
   X_design <- get_X_design(tmp_data)
 
-  # ── Draw categorical responses using true coefficients ────────────────
-  # beta_0 is p x (J-1) = [β_2,...,β_J]; prepend 0 column for category 1.
+  # ── Build fixed reference vector x_0 from config ─────────────────────
+  # x_0 is determined by the predictor reference levels, not the sample.
+  # This eliminates the psi_0 / psi_hat mismatch from x_0 = colMeans.
+  ref_row <- build_reference_row(config)
+  ref_df <- as.data.frame(ref_row)
+  ref_df[["Y"]] <- factor(1L, levels = seq_len(J))
+  attr(ref_df, "terms") <- terms(as.formula(formula_str), data = ref_df)
+  attr(ref_df, "J") <- J
+  x_0 <- as.numeric(get_X_design(ref_df))
+
+  # ── Draw categorical responses ────────────────────────────────────────
   beta_0 <- matrix(parameter$param_0, nrow = ncol(X_design), ncol = J - 1L)
   eta <- X_design %*% beta_0
   probs <- t(apply(cbind(0, eta), 1, softmax_scalar))
   Y <- apply(probs, 1, \(p) sample.int(J, 1L, prob = p))
 
   # ── Add pseudo-obs for zero-count categories ──────────────────────────
-  # Each absent category receives one pseudo-observation placed at the
-  # observed covariate column means. Placement at the means minimizes
-  # leverage on the estimated regression coefficients.
   zero_cats <- setdiff(seq_len(J), unique(Y))
   if (length(zero_cats) > 0L) {
-    col_means <- lapply(as.data.frame(covariate_df), mean)
-    pseudo <- as.data.frame(col_means)[
+    # Place pseudo-obs at the reference level (factor) or column means (numeric)
+    pseudo_row <- lapply(data_cfg$predictors, function(pred) {
+      if (identical(pred$type, "factor")) {
+        factor(pred$reference, levels = pred$levels)
+      } else {
+        mean(covariate_df[[pred$symbol]])
+      }
+    }) |>
+      setNames(sapply(data_cfg$predictors, `[[`, "symbol"))
+    pseudo_df <- as.data.frame(pseudo_row)[
       rep(1L, length(zero_cats)),
       ,
       drop = FALSE
     ]
-    rownames(pseudo) <- NULL
-    covariate_df <- rbind(covariate_df, pseudo)
+    rownames(pseudo_df) <- NULL
+    covariate_df <- rbind(covariate_df, pseudo_df)
     Y <- c(Y, zero_cats)
   }
 
-  # ── Assemble final data frame ─────────────────────────────────────────
-  # Natural factor ordering (levels = 1:J) so nnet::multinom uses
-  # category 1 as baseline and table(data$Y) is safe to index by position.
-  # n_obs records the original observation count, excluding pseudo-obs,
-  # so that x_0 = colMeans(X_design) is computed from observed rows only.
+  # ── Assemble data frame ───────────────────────────────────────────────
   Y_factor <- factor(Y, levels = seq_len(J))
+  data <- data.frame(Y = Y_factor) |> cbind(covariate_df)
 
-  data <- data.frame(Y = Y_factor) |>
-    cbind(covariate_df)
+  # Re-attach factor levels after cbind
+  for (pred in data_cfg$predictors) {
+    if (identical(pred$type, "factor")) {
+      data[[pred$symbol]] <- factor(data[[pred$symbol]], levels = pred$levels)
+    }
+  }
 
   attr(data, "terms") <- terms(as.formula(formula_str), data = data)
   attr(data, "J") <- J
   attr(data, "n_obs") <- n
+  attr(data, "x_0") <- x_0 # fixed reference vector
 
   data
 }
 
 # ── Data Spec Constructor ───────────────────────────────────────────────
 
-#' Build a data_spec for the multinomial logistic regression model
-#'
-#' @param config  Simulation config list. Must contain a 'data' section.
-#' @return        A \code{data_spec} object.
 make_data <- function(config) {
   if (is.null(config$data)) {
     stop("Config must contain a 'data' section.", call. = FALSE)
   }
-
   likelyr::data_spec(
     name = "Multinomial logistic regression data",
     generate_data = generate_data

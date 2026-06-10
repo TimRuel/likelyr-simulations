@@ -7,51 +7,104 @@
 #   θ = vec(B) = (β_2^T, ..., β_J^T)^T ∈ R^{p(J-1)}.
 #
 # Category 1 is the baseline; its coefficient vector is fixed at 0.
-# The conditional probability vector at covariate x is
-#   theta_j(x; B) = exp(x^T β_j) / sum_{k=1}^{J} exp(x^T β_k),
-# where β_1 = 0. In matrix form, the n x J linear predictor matrix is
-# cbind(0, X %*% B), with the baseline column prepended.
 #
-# The inference target is Simpson's index of the conditional probability
-# vector at the observed covariate mean x_0 = colMeans(X_design):
+# Estimand and reference covariate:
+#   The parameter of interest is Simpson's index at a fixed reference
+#   covariate vector x_0, determined by the config predictor reference
+#   levels (e.g., x_0 = (1,0,0,0)^T for the reference level of a
+#   four-level factor). x_0 is fixed across all datasets from the same
+#   population — it is not computed from observed data.
 #
 #   psi(B) = D(theta(x_0; B)) = sum_j theta_j(x_0; B)^2
 #
-# The true parameter value psi_0 is defined via the marginal distribution:
+#   psi_0 = D(theta(x_0; B_0))
 #
-#   psi_0 = D(theta_bar(B_0)) = sum_j theta_bar_j(B_0)^2
-#
-# where theta_bar_j(B_0) = E_X[theta_j(X; B_0)] is approximated by
-# Monte Carlo integration over a large covariate sample. This ensures
-# psi_0 is a population-level quantity independent of the observed data.
+#   Both are evaluated at the same fixed x_0, so there is no mismatch
+#   between the true parameter value and the estimand as n grows.
 #
 # True coefficient generation:
-#   draw_X_mc()         — draw large MC covariate sample
-#   compute_theta_bar() — marginalise softmax over covariates
-#   generate_beta_0()   — find B satisfying D(theta_bar(B)) = psi_target
+#   build_x_reference() — construct x_0 from config reference levels
+#   generate_beta_0()   — find B satisfying D(theta(x_0; B)) = psi_target
+#
+#   Only the component of B along x_0 (i.e., x_0^T B) is constrained
+#   by psi_target. The remaining components are drawn from the config
+#   coefficient distribution, giving a family of B matrices that all
+#   achieve psi_target at x_0 while varying freely elsewhere.
 #
 # MLE stabilization:
 #   beta_mle_fn() augments the data with one pseudo-observation per
-#   zero-count category before fitting nnet::multinom. This prevents
-#   coefficient divergence for unobserved categories without affecting
-#   the dataset used for inference. The augmentation is scoped entirely
-#   to MLE fitting and does not propagate to the likelihood or sieve.
+#   zero-count category before fitting nnet::multinom. Scoped to MLE
+#   fitting only; does not affect the likelihood or sieve.
 # ======================================================================
 
-# ── Monte Carlo helpers ─────────────────────────────────────────────────
+# ── Helpers (shared with data.R) ────────────────────────────────────────
 
-#' Draw a large Monte Carlo covariate sample and build its design matrix
+draw_from <- function(dist_cfg, n = 1L) {
+  fn <- match.fun(dist_cfg$name)
+  args <- c(list(n), dist_cfg$args)
+  do.call(fn, args)
+}
+
+softmax_scalar <- function(x) {
+  z <- x - max(x)
+  exp(z) / sum(exp(z))
+}
+
+# ── Reference covariate construction ───────────────────────────────────
+
+#' Build the fixed reference covariate vector x_0 from config
+#'
+#' Constructs x_0 as the design vector corresponding to the reference
+#' level of each factor predictor and 0 for each numeric predictor.
+#' For a four-level factor (forest/grassland/wetland/scrub) with forest
+#' as the reference, x_0 = (1, 0, 0, 0)^T (intercept plus three zeros).
+#'
+#' This vector is fixed for all datasets generated from the same config,
+#' ensuring psi_0 = D(theta(x_0; B_0)) and psi_hat = D(theta(x_0; B_hat))
+#' target the same population quantity.
 #'
 #' @param config  Simulation config list.
-#' @param N       Number of draws. Default: 1e5.
-#' @return        N x p design matrix.
+#' @return        Numeric vector of length p (design vector at reference level).
+build_x_reference <- function(config) {
+  J <- config$parameter$J
+  formula_str <- config$data$formula
+  pred_list <- config$data$predictors
+
+  ref_row <- lapply(pred_list, function(pred) {
+    if (identical(pred$type, "factor")) {
+      factor(pred$reference, levels = pred$levels)
+    } else {
+      0
+    }
+  }) |>
+    setNames(sapply(pred_list, `[[`, "symbol"))
+
+  ref_df <- as.data.frame(ref_row)
+  ref_df[["Y"]] <- factor(1L, levels = seq_len(J))
+  attr(ref_df, "terms") <- terms(as.formula(formula_str), data = ref_df)
+  attr(ref_df, "J") <- J
+
+  as.numeric(get_X_design(ref_df))
+}
+
+# ── Monte Carlo helpers (retained for random effects model compat.) ─────
+
 draw_X_mc <- function(config, N = 1e5L) {
   data_cfg <- config$data
   J <- config$parameter$J
   formula_str <- data_cfg$formula
 
   covariate_df <- lapply(data_cfg$predictors, \(pred) {
-    vals <- draw_from(pred$distribution, N)
+    if (identical(pred$type, "factor")) {
+      probs <- pred$probabilities %||%
+        rep(1 / length(pred$levels), length(pred$levels))
+      vals <- factor(
+        sample(pred$levels, N, replace = TRUE, prob = probs),
+        levels = pred$levels
+      )
+    } else {
+      vals <- draw_from(pred$distribution, N)
+    }
     setNames(data.frame(vals), pred$symbol)
   }) |>
     do.call(what = cbind)
@@ -64,16 +117,6 @@ draw_X_mc <- function(config, N = 1e5L) {
   get_X_design(tmp_data)
 }
 
-#' Compute marginal category probabilities by Monte Carlo integration
-#'
-#' Averages the softmax conditional probabilities over the rows of X_mc,
-#' approximating E_X[theta(X; B)] under the config covariate distribution.
-#'
-#' @param param     Numeric vector vec(B) of length p*(J-1), or p x (J-1) matrix.
-#'   Encodes [β_2,...,β_J]; category 1 (baseline) is implicit with β_1 = 0.
-#' @param X_design  N x p design matrix.
-#' @return          Numeric vector of length J of marginal probabilities,
-#'   with theta_1 first.
 compute_theta_bar <- function(param, X_design) {
   p <- ncol(X_design)
   beta_mat <- matrix(param, nrow = p)
@@ -85,34 +128,37 @@ compute_theta_bar <- function(param, X_design) {
 
 # ── True coefficient generation ─────────────────────────────────────────
 
-#' Find beta_0 satisfying D(theta_bar(beta_0)) = psi_target
+#' Find B_0 satisfying D(theta(x_0; B_0)) = psi_target
 #'
-#' Minimises (D(theta_bar(B)) - psi_target)^2 via L-BFGS-B using a large
-#' Monte Carlo covariate sample to approximate the marginal probabilities.
-#' Warm-starts from a random draw from the config coefficient distribution.
-#' Retries with fresh warm starts if the optimizer does not converge.
+#' The conditional Simpson's index at x_0 depends only on x_0^T B.
+#' The optimizer finds B such that D(softmax(c(0, x_0^T B))) = psi_target.
+#' Components of B orthogonal to x_0 are drawn from the config coefficient
+#' distribution — they affect the likelihood structure (nuisance parameter
+#' richness) but not the estimand at x_0.
 #'
 #' @param config      Simulation config list.
-#' @param X_mc        N x p Monte Carlo design matrix (precomputed).
+#' @param x_0         Numeric vector of length p (fixed reference vector).
 #' @param psi_target  Target Simpson's index value.
-#' @param tol         Convergence tolerance on |D - psi_target|. Default: 1e-4.
-#' @param max_tries   Maximum number of warm-start retries. Default: 20.
+#' @param tol         Convergence tolerance. Default: 1e-4.
+#' @param max_tries   Maximum warm-start retries. Default: 20.
 #' @return            p x (J-1) coefficient matrix [β_2,...,β_J].
 generate_beta_0 <- function(
   config,
-  X_mc,
+  x_0,
   psi_target,
   tol = 1e-4,
   max_tries = 20L
 ) {
   J <- config$parameter$J
   coef_dist <- config$parameter$coefficient_distribution
-  p <- ncol(X_mc)
+  p <- length(x_0)
   np <- p * (J - 1L)
 
   objective <- function(b) {
-    theta_bar <- compute_theta_bar(b, X_mc)
-    (sum(theta_bar^2) - psi_target)^2
+    beta_mat <- matrix(b, nrow = p, ncol = J - 1L)
+    eta <- as.numeric(x_0 %*% beta_mat)
+    theta <- softmax_scalar(c(0, eta))
+    (sum(theta^2) - psi_target)^2
   }
 
   for (attempt in seq_len(max_tries)) {
@@ -124,7 +170,9 @@ generate_beta_0 <- function(
     )
 
     beta_mat <- matrix(fit$par, nrow = p, ncol = J - 1L)
-    psi_achieved <- sum(compute_theta_bar(beta_mat, X_mc)^2)
+    eta <- as.numeric(x_0 %*% beta_mat)
+    theta <- softmax_scalar(c(0, eta))
+    psi_achieved <- sum(theta^2)
 
     if (abs(psi_achieved - psi_target) <= tol) {
       return(beta_mat)
@@ -137,53 +185,39 @@ generate_beta_0 <- function(
     tol,
     max_tries
   ))
-
   beta_mat
 }
 
 # ── MLE ────────────────────────────────────────────────────────────────
 
-#' Compute the MLE of vec(B) via nnet::multinom
-#'
-#' data$Y has natural factor ordering (levels = 1:J), so nnet::multinom
-#' automatically uses category 1 as the reference (baseline). coef(fit)
-#' returns a (J-1) x p matrix with rows for categories 2,...,J.
-#' Transposing to p x (J-1) and flattening column-major gives
-#' vec(B) = (β_2^T,...,β_J^T)^T, matching our parameterization convention.
-#'
-#' Before fitting, one pseudo-observation is added for each zero-count
-#' category, placed at the observed covariate means. This prevents
-#' coefficient divergence when categories are absent from the data, which
-#' can corrupt param_mle and destabilize the IL machinery. The augmentation
-#' is scoped entirely to this function and does not affect the dataset
-#' stored in the model or used for inference elsewhere. The "n_obs"
-#' attribute identifies the original observations, excluding any
-#' epsilon-smoothed rows already present in data.
-#'
-#' A small L2 penalty (decay) is applied in addition to the
-#' pseudo-observations for further numerical stability.
-#'
-#' @param data  Data frame with "terms", "J", and "n_obs" attributes.
-#' @return      Numeric vector of length p*(J-1).
 beta_mle_fn <- function(data) {
   J <- attr(data, "J")
   n_obs <- attr(data, "n_obs")
   formula_str <- formula(attr(data, "terms"))
 
-  # Augment with one pseudo-observation per zero-count category,
-  # placed at the observed covariate means. Scoped to MLE fitting only.
   y <- as.integer(as.character(data$Y[seq_len(n_obs)]))
   zero_cats <- setdiff(seq_len(J), unique(y))
 
   data_fit <- if (length(zero_cats) > 0L) {
     obs_data <- data[seq_len(n_obs), , drop = FALSE]
     covariate_cols <- setdiff(names(obs_data), "Y")
-    col_means <- lapply(obs_data[covariate_cols], mean)
-    pseudo <- as.data.frame(col_means)[
+    # Pseudo-obs at reference level for factors, column mean for numeric
+    col_refs <- lapply(covariate_cols, function(nm) {
+      col <- obs_data[[nm]]
+      if (is.factor(col)) levels(col)[1L] else mean(col)
+    })
+    names(col_refs) <- covariate_cols
+    pseudo <- as.data.frame(col_refs)[
       rep(1L, length(zero_cats)),
       ,
       drop = FALSE
     ]
+    # Restore factor levels
+    for (nm in covariate_cols) {
+      if (is.factor(obs_data[[nm]])) {
+        pseudo[[nm]] <- factor(pseudo[[nm]], levels = levels(obs_data[[nm]]))
+      }
+    }
     rownames(pseudo) <- NULL
     pseudo$Y <- factor(zero_cats, levels = levels(data$Y))
     pseudo <- pseudo[c("Y", covariate_cols)]
@@ -207,10 +241,10 @@ beta_mle_fn <- function(data) {
 
 #' Build a parameter_spec for the multinomial logistic regression model
 #'
-#' Finds beta_0 satisfying D(theta_bar(beta_0)) = psi_target via Monte
-#' Carlo marginalisation over the covariate distribution. Stores
-#' theta_bar_0 as an extra field for use by make_estimand(), which
-#' computes psi_0 = D(theta_bar_0) without requiring the observed data.
+#' psi_0 = D(theta(x_0; B_0)) is defined conditionally at the fixed
+#' reference vector x_0 derived from the config predictor reference
+#' levels. Both x_0 and psi_0 are stored as extra fields so that
+#' make_estimand() can use them without accessing observed data.
 #'
 #' @param config  Simulation config list. Must contain a 'parameter' section.
 #' @return        A \code{parameter_spec} object.
@@ -222,9 +256,15 @@ make_parameter <- function(config) {
   J <- config$parameter$J
   f <- config$parameter$index_target_frac
   psi_target <- 1 / J + f * (1 - 1 / J)
-  X_mc <- draw_X_mc(config)
-  beta_0 <- generate_beta_0(config, X_mc, psi_target)
-  theta_bar_0 <- compute_theta_bar(beta_0, X_mc)
+
+  # Fixed reference vector: determined by config, not observed data
+  x_0 <- build_x_reference(config)
+  beta_0 <- generate_beta_0(config, x_0, psi_target)
+
+  # psi_0: conditional at fixed x_0 — no Monte Carlo needed
+  eta_0 <- as.numeric(x_0 %*% beta_0)
+  theta_0 <- softmax_scalar(c(0, eta_0))
+  psi_0 <- sum(theta_0^2)
 
   likelyr::parameter_spec(
     name = "Multinomial logistic regression coefficients",
@@ -232,9 +272,10 @@ make_parameter <- function(config) {
     param_0 = as.numeric(beta_0),
     param_lower = NULL,
     param_upper = NULL,
-    omega_dim = J, # omega_hat lives in Delta^{J-1}, not R^{p(J-1)}
+    omega_dim = J,
     eq = NULL,
     eq_jac = NULL,
-    theta_bar_0 = theta_bar_0
+    x_0 = x_0, # fixed reference vector for estimand evaluation
+    psi_0 = psi_0 # D(theta(x_0; B_0)), pre-computed
   )
 }

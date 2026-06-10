@@ -72,6 +72,9 @@ mask_missing <- function(Y_hat, missing_mask) {
 #' @param data  Data frame with "terms" and optionally "n_obs" attributes.
 #' @return      Numeric vector of length p.
 x_reference <- function(data) {
+  if (!is.null(attr(data, "x_0"))) {
+    return(attr(data, "x_0"))
+  }
   n_obs <- attr(data, "n_obs") %||% nrow(data)
   X_design <- get_X_design(data)
   colMeans(X_design[seq_len(n_obs), , drop = FALSE])
