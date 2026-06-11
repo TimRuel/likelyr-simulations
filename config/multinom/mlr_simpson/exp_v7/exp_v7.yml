@@ -10,7 +10,7 @@ test:
   simulation.iterations: 5
   sampler.min_branches: 10
   sampler.branch_buffer: 5
-  parameter.J: 10
+  parameter.J: 5
   data.n_obs: 80
   parameter.index_target_frac: 0.3
 design:
@@ -21,42 +21,24 @@ design:
     data.n_obs: 20
     parameter.index_target_frac: 0.3
   - parameter.J: 5
-    data.n_obs: 30
-    parameter.index_target_frac: 0.3
-  - parameter.J: 5
-    data.n_obs: 40
-    parameter.index_target_frac: 0.3
-  - parameter.J: 5
-    data.n_obs: 60
-    parameter.index_target_frac: 0.3
-  - parameter.J: 5
     data.n_obs: 80
     parameter.index_target_frac: 0.3
   - parameter.J: 10
-    data.n_obs: 40
-    parameter.index_target_frac: 0.3
-  - parameter.J: 10
     data.n_obs: 60
-    parameter.index_target_frac: 0.3
-  - parameter.J: 10
-    data.n_obs: 80
-    parameter.index_target_frac: 0.3
-  - parameter.J: 10
-    data.n_obs: 120
     parameter.index_target_frac: 0.3
   - parameter.J: 10
     data.n_obs: 160
     parameter.index_target_frac: 0.3
 base_simulation:
-  iterations: 1100
+  iterations: 500
   parameter:
     J: ~
-    index_target_frac: 0.1
+    index_target_frac: 0.3
     coefficient_distribution:
       name: rnorm
       args:
       - 0.0
-      - 0.5
+      - 1.0
   likelihood:
     family: multinomial
     link: logit
@@ -87,6 +69,7 @@ base_simulation:
     rejection_reasons:
     - empty_restricted_grid
     - no_feasible_grid_point
+    - mode_on_psi_boundary
     - mode_locator_failed
     - mode_eval_failed_after_snap
     - oscillation

@@ -9,7 +9,7 @@ experiment:
 simulation:
   sim_id: sim_01
   seed_base: 108000
-  iterations: 1100
+  iterations: 500
 design:
   design_type: points
   overrides:
@@ -20,7 +20,7 @@ test:
   simulation.iterations: 5
   sampler.min_branches: 10
   sampler.branch_buffer: 5
-  parameter.J: 10
+  parameter.J: 5
   data.n_obs: 80
   parameter.index_target_frac: 0.3
 parameter:
@@ -30,7 +30,7 @@ parameter:
     name: rnorm
     args:
     - 0.0
-    - 0.5
+    - 1.0
   seed: 108000
 likelihood:
   family: multinomial
@@ -61,6 +61,7 @@ traversal:
   rejection_reasons:
   - empty_restricted_grid
   - no_feasible_grid_point
+  - mode_on_psi_boundary
   - mode_locator_failed
   - mode_eval_failed_after_snap
   - oscillation
