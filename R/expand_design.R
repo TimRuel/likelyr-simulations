@@ -269,6 +269,7 @@ iterations <- as.integer(iterations)
 # -----------------------------------------------------------------------------
 points <- switch(
   tolower(design_type),
+  "single" = list(list()),
   "grid" = expand_grid_design(design$factors),
   "points" = expand_points_design(design$points),
   stop("Unsupported design$type: ", design_type, call. = FALSE)

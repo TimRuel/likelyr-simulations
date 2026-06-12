@@ -1,0 +1,62 @@
+experiment:
+  version: exp_v1
+  seed_base: 5000
+  specs_dir: /gpfs/home/tbr0780/likelyr-simulations/specs/multinom/ne_entropy
+  logs_dir: /gpfs/home/tbr0780/likelyr-simulations/logs/multinom/ne_entropy/exp_v1
+  exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/ne_entropy/exp_v1
+  description: |
+    Single-condition IL vs PL experiment for Shannon entropy under a no-effects multinomial model. True probabilities are implied by a manually specified count vector. J and n are derived from that vector rather than set explicitly.
+simulation:
+  sim_id: sim_01
+  seed_base: 105000
+  iterations: 1000
+design:
+  design_type: single
+  overrides: []
+parameter:
+  mode: manual
+  theta_0:
+  - 1
+  - 1
+  - 2
+  - 4
+  - 7
+  - 10
+  seed: 105000
+likelihood:
+  name: ~
+estimand:
+  increment: 0.01
+  confidence_levels:
+  - 0.9
+  - 0.95
+  - 0.99
+  gamma: 0.9
+  cutoff_buffer: 0.05
+  uniroot_expand_factor: 0.02
+  psi_lower: 0.0
+nuisance:
+  name: Multinomial cell probabilities entropy nuisance parameter (ZSE)
+sampler:
+  min_branches: 250
+  branch_buffer: 0
+  seed_base: 115000
+traversal:
+  increment: 0.01
+  confidence_levels:
+  - 0.9
+  - 0.95
+  - 0.99
+  cutoff_buffer: 1.5
+solver:
+  localsolver: SLSQP
+  control:
+    xtol_rel: 1.0e-08
+    maxeval: 1000
+  localtol: 1.0e-06
+  max_retries: 10
+execution:
+  packages: likelyr
+data:
+  n_obs: ~
+  seed_base: 125000
