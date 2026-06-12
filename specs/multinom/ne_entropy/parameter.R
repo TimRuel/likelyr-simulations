@@ -155,7 +155,7 @@ make_parameter <- function(config) {
     stop(sprintf("Unknown parameter mode '%s'.", mode), call. = FALSE)
   )
 
-  spec <- parameter_spec(
+  spec <- likelyr::parameter_spec(
     name = "Multinomial logits (no effects, baseline parameterization)",
     param_0 = result$eta_0,
     param_lower = rep(-Inf, length(result$eta_0)),

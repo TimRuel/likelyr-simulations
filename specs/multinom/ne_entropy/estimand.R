@@ -8,11 +8,11 @@ psi_fn <- function(param, data = NULL) {
   -sum(p * log(p))
 }
 
-# ∂H/∂η_k = p_k (H − log p_k)
+# ∂H/∂η_k = −p_k (log p_k + H)
 psi_jac <- function(param, data = NULL) {
   p <- softmax_from_eta(param)
   H <- -sum(p * log(p))
-  p[-length(p)] * (H - log(p[-length(p)]))
+  -p[-length(p)] * (log(p[-length(p)]) + H)
 }
 
 search_interval_fn <- function(param_mle, data) {
@@ -59,7 +59,7 @@ make_estimand <- function(config, ...) {
     )
   }
 
-  estimand_spec(
+  likelyr::estimand_spec(
     psi_fn = psi_fn,
     psi_jac = psi_jac,
     search_interval_fn = search_interval_fn,
