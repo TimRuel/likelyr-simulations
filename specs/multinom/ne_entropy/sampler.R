@@ -67,70 +67,44 @@ dominant_prob_for_entropy <- function(H_target, J) {
 entropy_sampler_fn <- function(param_dim, psi_mle, counts, ...) {
   J <- param_dim + 1L
   H_max <- log(J)
-  tol <- 0.01 * H_max
+  tol <- 1e-7
 
-  psi_low_threshold <- 0.15 * H_max
-  psi_high_threshold <- 0.85 * H_max
+  a_star <- dominant_prob_for_entropy(psi_mle, J)
 
-  regime <- if (psi_mle < psi_low_threshold) {
-    "degenerate"
-  } else if (psi_mle > psi_high_threshold) {
-    "uniform"
-  } else {
-    "interior"
+  if (is.null(a_star)) {
+    stop(
+      sprintf(
+        "entropy_sampler_fn: could not locate dominant probability for ",
+        "psi_mle = %.6f, J = %d. Check that psi_mle is strictly interior ",
+        "to (0, log(J)).",
+        psi_mle,
+        J
+      ),
+      call. = FALSE
+    )
   }
-
-  make_proposal <- switch(
-    regime,
-
-    interior = function() {
-      x <- -log(runif(J))
-      x / sum(x)
-    },
-
-    degenerate = {
-      a_star <- dominant_prob_for_entropy(psi_mle, J)
-      if (is.null(a_star)) {
-        function() {
-          x <- -log(runif(J))
-          x / sum(x)
-        }
-      } else {
-        function() {
-          a <- a_star + rnorm(1, sd = tol)
-          a <- min(max(a, 1e-8), 1 - 1e-8)
-          rest <- (1 - a) / (J - 1) + rnorm(J - 1L, sd = tol / J)
-          rest <- pmax(rest, 1e-8)
-          theta <- c(a, rest)
-          theta / sum(theta)
-        }
-      }
-    },
-
-    uniform = {
-      alpha <- 20
-      function() {
-        x <- rgamma(J, shape = alpha, rate = 1)
-        x / sum(x)
-      }
-    }
-  )
 
   function(history = NULL) {
     n_rejections <- 0L
 
     repeat {
-      candidate <- make_proposal()
-      if (abs(entropy_of(candidate) - psi_mle) < tol) {
+      a <- a_star + rnorm(1, sd = 1e-3)
+      a <- min(max(a, 1e-8), 1 - 1e-8)
+      rest <- (1 - a) / (J - 1) + rnorm(J - 1L, sd = 1e-3 / J)
+      rest <- pmax(rest, 1e-8)
+      theta <- c(a, rest)
+      theta <- theta / sum(theta)
+
+      if (abs(entropy_of(theta) - psi_mle) < tol) {
         break
       }
       n_rejections <- n_rejections + 1L
     }
 
     list(
-      candidate = log(candidate[seq_len(J - 1L)]) - log(candidate[J]),
+      candidate = log(theta[seq_len(J - 1L)]) - log(theta[J]),
       diag = list(
-        regime = regime,
+        regime = "targeted",
         n_rejections = n_rejections
       )
     )
