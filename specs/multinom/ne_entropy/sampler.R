@@ -67,45 +67,70 @@ dominant_prob_for_entropy <- function(H_target, J) {
 entropy_sampler_fn <- function(param_dim, psi_mle, counts, ...) {
   J <- param_dim + 1L
   H_max <- log(J)
-  tol <- 1e-7
 
-  a_star <- dominant_prob_for_entropy(psi_mle, J)
-
-  if (is.null(a_star)) {
-    stop(
-      sprintf(
-        "entropy_sampler_fn: could not locate dominant probability for ",
-        "psi_mle = %.6f, J = %d. Check that psi_mle is strictly interior ",
-        "to (0, log(J)).",
-        psi_mle,
-        J
+  project_to_level_set <- function(eta_init) {
+    res <- tryCatch(
+      nloptr::auglag(
+        x0 = eta_init,
+        fn = function(eta) abs(psi_fn(eta) - psi_mle),
+        heq = NULL,
+        hin = NULL,
+        lower = rep(-20, J - 1L),
+        upper = rep(20, J - 1L),
+        localsolver = "LBFGS",
+        localtol = 1e-10,
+        control = list(xtol_rel = 1e-10, maxeval = 1000),
+        deprecatedBehavior = FALSE
       ),
-      call. = FALSE
+      error = function(e) NULL
     )
+
+    if (is.null(res)) {
+      return(NULL)
+    }
+
+    eta_proj <- res$par
+    achieved <- abs(psi_fn(eta_proj) - psi_mle)
+    if (achieved > 1e-4) {
+      return(NULL)
+    }
+
+    eta_proj
   }
 
   function(history = NULL) {
-    n_rejections <- 0L
+    n_attempts <- 0L
 
     repeat {
-      a <- a_star + rnorm(1, sd = 1e-3)
-      a <- min(max(a, 1e-8), 1 - 1e-8)
-      rest <- (1 - a) / (J - 1) + rnorm(J - 1L, sd = 1e-3 / J)
-      rest <- pmax(rest, 1e-8)
-      theta <- c(a, rest)
-      theta <- theta / sum(theta)
+      theta_init <- -log(runif(J))
+      theta_init <- theta_init / sum(theta_init)
+      eta_init <- log(theta_init[-J]) - log(theta_init[J])
 
-      if (abs(entropy_of(theta) - psi_mle) < tol) {
+      eta_proj <- project_to_level_set(eta_init)
+      n_attempts <- n_attempts + 1L
+
+      if (!is.null(eta_proj)) {
         break
       }
-      n_rejections <- n_rejections + 1L
+
+      if (n_attempts > 100L) {
+        stop(
+          sprintf(
+            "entropy_sampler_fn: failed to project onto level set after %d attempts (psi_mle = %.6f, J = %d).",
+            n_attempts,
+            psi_mle,
+            J
+          ),
+          call. = FALSE
+        )
+      }
     }
 
     list(
-      candidate = log(theta[seq_len(J - 1L)]) - log(theta[J]),
+      candidate = eta_proj,
       diag = list(
-        regime = "targeted",
-        n_rejections = n_rejections
+        regime = "projection",
+        n_attempts = n_attempts
       )
     )
   }
