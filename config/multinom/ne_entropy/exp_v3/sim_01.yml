@@ -1,14 +1,14 @@
 experiment:
-  version: exp_v1
-  seed_base: 5000
+  version: exp_v3
+  seed_base: 7000
   specs_dir: /gpfs/home/tbr0780/likelyr-simulations/specs/multinom/ne_entropy
-  logs_dir: /gpfs/home/tbr0780/likelyr-simulations/logs/multinom/ne_entropy/exp_v1
-  exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/ne_entropy/exp_v1
+  logs_dir: /gpfs/home/tbr0780/likelyr-simulations/logs/multinom/ne_entropy/exp_v3
+  exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/ne_entropy/exp_v3
   description: |
     Single-condition IL vs PL experiment for Shannon entropy under a no-effects multinomial model. True probabilities are implied by a manually specified count vector. J and n are derived from that vector rather than set explicitly.
 simulation:
   sim_id: sim_01
-  seed_base: 105000
+  seed_base: 107000
   iterations: 1100
 design:
   design_type: single
@@ -17,12 +17,14 @@ parameter:
   mode: manual
   theta_0:
   - 1
-  - 1
-  - 2
+  - 3
   - 4
+  - 6
   - 7
   - 10
-  seed: 105000
+  - 14
+  - 30
+  seed: 107000
 likelihood:
   name: ~
 estimand:
@@ -40,7 +42,7 @@ nuisance:
 sampler:
   min_branches: 250
   branch_buffer: 0
-  seed_base: 115000
+  seed_base: 117000
 traversal:
   increment: 0.01
   traversal_method: topdown
@@ -84,4 +86,4 @@ execution:
   packages: likelyr
 data:
   n_obs: ~
-  seed_base: 125000
+  seed_base: 127000
