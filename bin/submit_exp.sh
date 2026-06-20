@@ -11,8 +11,8 @@ set -euo pipefail
 #   • Array size = simulation.iterations (minus completed)
 #   • Logs land in sim_dir/logs/ within the experiment directory
 #   • stderr is discarded (/dev/null) to save storage
-#   • Submits a completion flag job after each array that
-#     writes a COMPLETE file to the simulation directory
+#   • COMPLETE flag is written by slurm_iter.sh when all
+#     iterations are present — no separate dependency job
 #   • Uses filesystem as the source of truth
 # ============================================================
 
@@ -187,29 +187,12 @@ for sim_yml in "${SIM_YMLS[@]}"; do
       --output="${log_dir}/iter_%04a.out" \
       --error=/dev/null \
       "$SLURM_SCRIPT" \
-      "$sim_yml"
+      "$sim_yml" \
+      "$N_ITER"
   )"
 
   job_id="$(echo "$job_output" | awk '{print $NF}')"
   echo "   Job ID: ${job_id}"
-
-  # --------------------------------------------------
-  # Submit completion flag job — runs after all array
-  # tasks finish regardless of individual task outcome.
-  # Writes a COMPLETE sentinel file to the sim directory
-  # so that analyze_exp.sh can reliably detect finished sims.
-  # --------------------------------------------------
-  sbatch \
-    --dependency=afterany:${job_id} \
-    --job-name="likelyr_${sim_id}_complete" \
-    --partition=short \
-    --time=00:05:00 \
-    --nodes=1 --ntasks=1 --mem=1G \
-    --account=p32397 \
-    --output="${log_dir}/complete.out" \
-    --error=/dev/null \
-    --wrap="touch ${sim_dir}COMPLETE" \
-    > /dev/null
 
 done
 

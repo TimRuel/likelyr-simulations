@@ -72,6 +72,7 @@ traversal:
   rejection_reasons:
   - empty_restricted_grid
   - no_feasible_grid_point
+  - mode_on_psi_boundary
   - mode_locator_failed
   - mode_eval_failed_after_snap
   - mode_too_low

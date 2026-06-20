@@ -22,6 +22,8 @@ set -euo pipefail
 #   • Declares execution mode = slurm
 #   • Delegates all iteration logic to run_iter.R
 #   • Output is captured by SLURM via --output override
+#   • Writes COMPLETE sentinel to sim_dir when all iterations
+#     are present — no separate dependency job required
 # ============================================================
 
 # ===============================
@@ -43,17 +45,23 @@ export NUMEXPR_NUM_THREADS=1
 # ===============================
 # Validate CLI arguments
 # ===============================
-if [[ $# -ne 1 ]]; then
+if [[ $# -ne 2 ]]; then
   echo "❌ ERROR: Missing arguments."
-  echo "Usage: sbatch $0 <path/to/sim_XX.yml>"
+  echo "Usage: sbatch $0 <path/to/sim_XX.yml> <n_iter>"
   exit 1
 fi
 
 SIM_YML="$1"
+N_ITER="$2"
 
 if [[ ! -f "$SIM_YML" ]]; then
   echo "❌ ERROR: sim yaml not found:"
   echo "    $SIM_YML"
+  exit 1
+fi
+
+if [[ ! "$N_ITER" =~ ^[0-9]+$ ]]; then
+  echo "❌ ERROR: n_iter must be a positive integer (got: $N_ITER)"
   exit 1
 fi
 
@@ -134,3 +142,13 @@ Rscript --max-connections=256 \
 echo ""
 echo "✅ Iteration complete: ${SIM_ID} / ${ITER_ID}"
 echo "🕒 End time: $(date)"
+
+# ===============================
+# Write COMPLETE flag if all iterations are now present
+# ===============================
+n_done=$(find "${SIM_DIR}/iterations" -name "model.rds" | wc -l)
+
+if [[ "$n_done" -ge "$N_ITER" ]]; then
+  touch "${SIM_DIR}/COMPLETE"
+  echo "🏁 COMPLETE flag written: ${SIM_DIR}/COMPLETE"
+fi
