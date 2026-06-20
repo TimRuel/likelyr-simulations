@@ -64,54 +64,9 @@ dominant_prob_for_entropy <- function(H_target, J) {
 # 2. Sampler constructor
 # ======================================================================
 
-# ======================================================================
-# Sampler Specification (No Effects Multinomial, Logit Parameterization)
-# Target: Shannon Entropy H(theta) = -sum(p_j * log(p_j))
-#
-# Samples omega_hat from the entropy level set
-#
-#   Omega_psi_hat = { theta in Delta^{J-1} : H(theta) = psi_hat }
-#
-# via projection. A starting probability vector is constructed with
-# a designated dominant category, then projected onto the level set
-# by minimizing |H(theta(eta)) - psi_hat| via auglag in eta-space.
-#
-# The dominant category cycles through 1, ..., J across successive
-# draws, ensuring uniform exploration of all J corners of the level
-# set regardless of the shape of the true distribution. Within each
-# dominant category, the dominant mass alpha is randomised slightly
-# and small jitter is added to all cells so repeated draws for the
-# same category produce distinct omega_hat values.
-#
-# omega_hat is returned in logit (eta) space: log(theta_j / theta_J)
-# for j = 1, ..., J-1. This matches the parameterisation used by
-# E_loglik, E_loglik_grad, and the warm start in ne_traversal.R.
-#
-# Draw count is tracked via a local environment to avoid <<-.
-#
-# Returns function(history = NULL) -> list(candidate, diag):
-#   $candidate          — numeric vector of length J-1 (omega-hat in eta-space)
-#   $diag$dominant_j    — integer: category used as dominant in projection init
-#   $diag$n_attempts    — integer: projection attempts before acceptance
-# ======================================================================
-
-# ======================================================================
-# 1. Entropy helper
-# ======================================================================
-
-entropy_of <- function(theta) {
-  p <- theta[theta > 0]
-  -sum(p * log(p))
-}
-
-# ======================================================================
-# 2. Sampler constructor
-# ======================================================================
-
 entropy_sampler_fn <- function(param_dim, psi_mle, counts, ...) {
   J <- param_dim + 1L
-  env <- new.env(parent = emptyenv())
-  env$draw_count <- 0L
+  H_max <- log(J)
 
   project_to_level_set <- function(eta_init) {
     res <- tryCatch(
@@ -135,7 +90,8 @@ entropy_sampler_fn <- function(param_dim, psi_mle, counts, ...) {
     }
 
     eta_proj <- res$par
-    if (abs(psi_fn(eta_proj) - psi_mle) > 1e-4) {
+    achieved <- abs(psi_fn(eta_proj) - psi_mle)
+    if (achieved > 1e-4) {
       return(NULL)
     }
 
@@ -143,24 +99,13 @@ entropy_sampler_fn <- function(param_dim, psi_mle, counts, ...) {
   }
 
   function(history = NULL) {
-    env$draw_count <- env$draw_count + 1L
     n_attempts <- 0L
 
-    dominant_j <- ((env$draw_count - 1L) %% J) + 1L
-
     repeat {
-      # Construct starting theta with dominant_j carrying most mass.
-      # Alpha is randomised slightly so repeated draws for the same
-      # category produce distinct projections.
-      alpha <- 0.5 + runif(1, 0, 0.3)
-      theta_init <- rep((1 - alpha) / (J - 1L), J)
-      theta_init[dominant_j] <- alpha
-
-      # Small jitter to all cells for additional diversity
-      theta_init <- theta_init + runif(J, 0, 1e-2)
+      theta_init <- -log(runif(J))
       theta_init <- theta_init / sum(theta_init)
-
       eta_init <- log(theta_init[-J]) - log(theta_init[J])
+
       eta_proj <- project_to_level_set(eta_init)
       n_attempts <- n_attempts + 1L
 
@@ -184,30 +129,11 @@ entropy_sampler_fn <- function(param_dim, psi_mle, counts, ...) {
     list(
       candidate = eta_proj,
       diag = list(
-        dominant_j = dominant_j,
+        regime = "projection",
         n_attempts = n_attempts
       )
     )
   }
-}
-
-# ======================================================================
-# 3. Spec constructor
-# ======================================================================
-
-make_sampler <- function(config) {
-  cfg <- config$sampler
-
-  if (is.null(cfg)) {
-    stop("Config must contain a 'sampler' section.", call. = FALSE)
-  }
-
-  likelyr::sampler_spec(
-    sampler_fn = entropy_sampler_fn,
-    min_branches = cfg$min_branches,
-    branch_buffer = cfg$branch_buffer %||% 0L,
-    name = "Shannon entropy projection sampler (no effects)"
-  )
 }
 
 # ======================================================================
