@@ -3,11 +3,11 @@
 # ============================================================
 experiment:
   name: multinom_no_effects_logit_entropy_manual
-  version: exp_v4
-  seed_base: 5000
+  version: exp_v6
+  seed_base: 7000
   specs_dir: /gpfs/home/tbr0780/likelyr-simulations/specs/multinom/ne_entropy
-  logs_dir: /gpfs/home/tbr0780/likelyr-simulations/logs/multinom/ne_entropy/exp_v4
-  exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/ne_entropy/exp_v4
+  logs_dir: /gpfs/home/tbr0780/likelyr-simulations/logs/multinom/ne_entropy/exp_v6
+  exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/ne_entropy/exp_v6
   description: >
     Single-condition IL vs PL experiment for Shannon entropy under a
     no-effects multinomial model. True probabilities are implied by a
@@ -23,7 +23,7 @@ base_simulation:
 
   parameter:
     mode: manual
-    theta_0: [1, 1, 2, 4, 7, 10]
+    theta_0: [1, 3, 4, 6, 7, 10, 14, 30]
 
   likelihood:
     name: ~

@@ -1,0 +1,79 @@
+# ============================================================
+# Application: Dune dataset, fixed effects multinomial, entropy
+# ============================================================
+experiment:
+  name: dune_fe_entropy
+  version: exp_v5
+  description: >
+    IL vs PL for Shannon entropy at a fixed reference site x_0 under
+    a fixed effects multinomial logit model fit to the dune meadow
+    vegetation dataset (vegan::dune). J = 30 species, n = 20 sites.
+
+parameter:
+  mode: data
+  x_0:
+    A1: 2.8
+    Moisture: "1"
+    Management: SF
+    Use: Haypastu
+    Manure: "4"
+
+likelihood:
+  name: ~
+
+estimand:
+  increment: 0.005
+  confidence_levels: [0.90, 0.95, 0.99]
+  gamma: 0.9
+  cutoff_buffer: 2.0
+  uniroot_expand_factor: 0.02
+  psi_lower: 0.0
+
+nuisance:
+  name: "Multinomial logit coefficients entropy nuisance parameter (ZSE)"
+
+sampler:
+  min_branches: 15
+  branch_buffer: 0
+
+traversal:
+  increment: 0.005
+  traversal_method: topdown
+  confidence_levels: [0.90, 0.95, 0.99]
+  cutoff_buffer: 3.0
+  n_adjacent: 3
+  max_mode_shifts: 10
+  k_recent: 3
+  drop_multiplier: 10.0
+  cap_multiplier: 10.0
+  mode_gap_multiplier: 30.0
+  interval_buffer: 3.0
+  max_drop_frac: 10.0
+  resid_tol: 1.0e-4
+  profile_retry_on:
+    - constraint
+  branch_retry_on:
+    - constraint
+  rejection_reasons:
+    - empty_restricted_grid
+    - no_feasible_grid_point
+    - mode_on_psi_boundary
+    - mode_locator_failed
+    - mode_eval_failed_after_snap
+    - mode_too_low
+    - oscillation
+    - mode_shift_exhausted
+    - jump_left
+    - jump_right
+  use_mode_locator_for_profile: true
+
+solver:
+  localsolver: SLSQP
+  control:
+    xtol_rel: 1.0e-08
+    maxeval: 2000
+  localtol: 1.0e-06
+  max_retries: 25
+
+execution:
+  packages: likelyr
