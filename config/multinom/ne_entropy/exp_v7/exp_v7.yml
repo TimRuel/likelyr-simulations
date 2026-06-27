@@ -5,9 +5,9 @@ experiment:
   name: multinom_no_effects_logit_entropy_dune
   version: exp_v7
   seed_base: 8000
-  specs_dir: /gpfs/home/tbr0780/likelyr-simulations/specs/multinom/ne_entropy_dune
-  logs_dir: /gpfs/home/tbr0780/likelyr-simulations/logs/multinom/ne_entropy/dune/exp_v7
-  exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/ne_entropy/dune/exp_v7
+  specs_dir: /gpfs/home/tbr0780/likelyr-simulations/specs/multinom/ne_entropy
+  logs_dir: /gpfs/home/tbr0780/likelyr-simulations/logs/multinom/ne_entropy/exp_v7
+  exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/ne_entropy/exp_v7
   description: >
     Single-iteration IL vs PL analysis of Shannon entropy under the
     no-effects multinomial model, applied to each of the 20 sites in
@@ -24,6 +24,7 @@ base_simulation:
 
   parameter:
     mode: data
+    J: 30
 
   likelihood:
     name: ~
@@ -93,5 +94,5 @@ base_simulation:
 # Design
 # ============================================================
 design:
-  type: single
+  type: sequence
   n_sims: 20

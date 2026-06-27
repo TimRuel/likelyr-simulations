@@ -131,14 +131,24 @@ generate_eta_0_entropy <- function(param_cfg) {
 }
 
 # ----------------------------------------------------------------------
-# Generate η₀ from data: uniform placeholder of length J = nrow(data)
+# Generate η₀ from config or data: uniform placeholder of length J.
+# J is read from param_cfg$J if data is NULL, otherwise from nrow(data).
 # ----------------------------------------------------------------------
 
-generate_eta_0_data <- function(data) {
-  J <- nrow(data)
+generate_eta_0_data <- function(param_cfg, data = NULL) {
+  J <- if (!is.null(data)) nrow(data) else param_cfg$J
+
+  if (is.null(J) || J < 2L) {
+    stop(
+      "mode = 'data' requires either data to be passed or J to be set in config.",
+      call. = FALSE
+    )
+  }
+
+  J <- as.integer(J)
   theta <- rep(1 / J, J)
   eta_0 <- theta_to_eta(theta)
-  names(eta_0) <- paste0("eta_", LETTERS[seq_len(J - 1L)])
+  names(eta_0) <- paste0("eta_", seq_len(J - 1L))
   list(eta_0 = eta_0, J = J, n_obs = NA_integer_)
 }
 
@@ -157,17 +167,9 @@ make_parameter <- function(config, data = NULL) {
 
   result <- switch(
     mode,
-    manual = generate_eta_0_manual(param_cfg),
+    manual  = generate_eta_0_manual(param_cfg),
     entropy = generate_eta_0_entropy(param_cfg),
-    data = {
-      if (is.null(data)) {
-        stop(
-          "mode = 'data' requires data to be passed to make_parameter().",
-          call. = FALSE
-        )
-      }
-      generate_eta_0_data(data)
-    },
+    data    = generate_eta_0_data(param_cfg, data),
     stop(sprintf("Unknown parameter mode '%s'.", mode), call. = FALSE)
   )
 

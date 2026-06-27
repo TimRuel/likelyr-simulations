@@ -7,8 +7,8 @@ experiment:
   description: |
     Single-iteration IL vs PL analysis of Shannon entropy under the no-effects multinomial model, applied to each of the 20 sites in the dune meadow vegetation dataset (Jongman et al. 1987). Each simulation corresponds to one site; the count vector is read directly from vegan::dune using the sim index as the row index.
 simulation:
-  sim_id: sim_01
-  seed_base: 108000
+  sim_id: sim_17
+  seed_base: 1708000
   iterations: 1
 design:
   design_type: sequence
@@ -16,7 +16,7 @@ design:
 parameter:
   mode: data
   J: 30
-  seed: 108000
+  seed: 1708000
 likelihood:
   name: ~
 estimand:
@@ -34,7 +34,7 @@ nuisance:
 sampler:
   min_branches: 250
   branch_buffer: 0
-  seed_base: 118000
+  seed_base: 1718000
 traversal:
   increment: 0.01
   traversal_method: topdown
@@ -78,4 +78,4 @@ execution:
   packages: likelyr
 data:
   n_obs: ~
-  seed_base: 128000
+  seed_base: 1728000

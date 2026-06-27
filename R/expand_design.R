@@ -50,6 +50,12 @@
 #   sampler.seed_base    = sim_seed_base + 10000     — iter: + iter_index
 #   data.seed_base       = sim_seed_base + 20000     — iter: + iter_index
 #
+# Design types:
+#   single:   one sim yaml, no overrides
+#   sequence: n_sims sim yamls, no overrides; sim index encodes identity
+#   grid:     fully crossed factorial over design$factors
+#   points:   explicit list of override mappings
+#
 # Usage:
 #   Rscript R/expand_design.R config/<path>/exp_vX.yml
 # =============================================================================
@@ -181,6 +187,17 @@ expand_points_design <- function(points) {
   points
 }
 
+expand_sequence_design <- function(design) {
+  n_sims <- design$n_sims
+  if (is.null(n_sims) || !is.numeric(n_sims) || n_sims < 1L) {
+    stop(
+      "design$n_sims must be a positive integer for type 'sequence'.",
+      call. = FALSE
+    )
+  }
+  lapply(seq_len(as.integer(n_sims)), function(i) list())
+}
+
 # -----------------------------------------------------------------------------
 # Load experiment config
 # -----------------------------------------------------------------------------
@@ -269,9 +286,10 @@ iterations <- as.integer(iterations)
 # -----------------------------------------------------------------------------
 points <- switch(
   tolower(design_type),
-  "single" = list(list()),
-  "grid" = expand_grid_design(design$factors),
-  "points" = expand_points_design(design$points),
+  "single"   = list(list()),
+  "sequence" = expand_sequence_design(design),
+  "grid"     = expand_grid_design(design$factors),
+  "points"   = expand_points_design(design$points),
   stop("Unsupported design$type: ", design_type, call. = FALSE)
 )
 

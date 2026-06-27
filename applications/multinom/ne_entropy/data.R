@@ -18,7 +18,7 @@ generate_data <- function(config, parameter) {
     )
   }
 
-  dune <- vegan::dune
+  data("dune", package = "vegan", envir = environment())
 
   counts <- as.integer(dune[row_index, ])
 
