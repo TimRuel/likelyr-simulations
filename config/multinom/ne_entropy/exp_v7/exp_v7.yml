@@ -5,7 +5,7 @@ experiment:
   name: multinom_no_effects_logit_entropy_dune
   version: exp_v7
   seed_base: 8000
-  specs_dir: /gpfs/home/tbr0780/likelyr-simulations/specs/multinom/ne_entropy
+  specs_dir: /home/tbr0780/likelyr-simulations/applications/multinom/ne_entropy
   logs_dir: /gpfs/home/tbr0780/likelyr-simulations/logs/multinom/ne_entropy/exp_v7
   exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/ne_entropy/exp_v7
   description: >
@@ -54,11 +54,10 @@ base_simulation:
     k_recent: 3
     drop_multiplier: 10.0
     cap_multiplier: 10.0
-    mode_gap_multiplier: 10.0
+    mode_gap_multiplier: 5.0
     interval_buffer: 1.2
     max_drop_frac: 10.0
     resid_tol: 1.0e-4
-    psi_upper: 3.40
     profile_retry_on:
       - constraint
     branch_retry_on:
