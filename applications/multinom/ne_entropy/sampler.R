@@ -6,11 +6,20 @@
 #
 #   Omega_psi_hat = { theta in Delta^{J-1} : H(theta) = psi_hat }
 #
-# via projection. A random draw from Dirichlet(alpha * theta_hat),
-# where theta_hat is the MLE, is projected onto the level set via
-# constrained optimization. This biases proposals toward the region
-# of the level set that is consistent with the observed data, which
-# is critical when many categories have zero counts.
+# following the approach of Severini (2007). A random direction
+# u = (u_1, ..., u_J) is drawn uniformly from the probability simplex,
+# and the point on the level set that maximizes the pseudo-likelihood
+#
+#   sum_j u_j * log(theta_j(eta))
+#
+# is located via constrained optimization in eta-space. This is
+# equivalent to Severini's step 2 in logit parameterization: the
+# pseudo-likelihood is a linear functional of log(theta), and
+# maximizing it over the level set selects a point whose location
+# depends on the random direction u but not on psi_mle itself.
+#
+# The MLE eta_hat is used as the warm start since it is already on
+# the level set by construction.
 #
 # omega_hat is returned in logit (eta) space: log(theta_j / theta_J)
 # for j = 1, ..., J-1.
@@ -48,7 +57,18 @@ dominant_prob_for_entropy <- function(H_target, J) {
 }
 
 # ======================================================================
-# 2. Sampler constructor
+# 2. Pseudo-likelihood objective (Severini step 2 in eta-space)
+# ======================================================================
+
+pseudo_loglik <- function(eta, u) {
+  theta <- softmax_from_eta(eta)
+  sum(u * log(pmax(theta, 1e-300)))
+}
+
+pseudo_loglik_neg <- function(eta, u) -pseudo_loglik(eta, u)
+
+# ======================================================================
+# 3. Sampler constructor
 # ======================================================================
 
 entropy_sampler_fn <- function(param_dim, psi_mle, data, ...) {
@@ -57,78 +77,60 @@ entropy_sampler_fn <- function(param_dim, psi_mle, data, ...) {
   delta <- 1e-2
   counts <- data$count
   theta_hat <- (counts + delta) / sum(counts + delta)
-  alpha <- 100.0
+  eta_hat <- log(theta_hat[-J]) - log(theta_hat[J])
 
-  project_to_level_set <- function(eta_init) {
-    eta_hat <- log(theta_hat[-J]) - log(theta_hat[J])
-    
-    # Interpolate between eta_hat (H = psi_mle exactly) and eta_init
-    # along the path: eta(t) = eta_hat + t * (eta_init - eta_hat)
-    # At t = 0: eta = eta_hat, H = psi_mle
-    # At t = 1: eta = eta_init, H ≈ psi_mle (since alpha is large)
-    # We find t such that H(eta(t)) = psi_mle exactly.
-    
-    H_of_t <- function(t) psi_fn(eta_hat + t * (eta_init - eta_hat))
-    
-    H_init <- H_of_t(1.0)
-    
-    if (abs(H_init - psi_mle) <= 1e-4) return(eta_init)
-    
-    # Since H_of_t(0) = psi_mle and H_of_t(1) ≈ psi_mle but not exact,
-    # bracket around t = 1 on whichever side crosses psi_mle
-    if (H_init > psi_mle) {
-      t_lo <- 1.0
-      t_hi <- 2.0
-      while (H_of_t(t_hi) > psi_mle && t_hi < 100) t_hi <- t_hi * 2
-    } else {
-      t_lo <- 0.0
-      t_hi <- 1.0
-    }
-    
-    root <- tryCatch(
-      uniroot(function(t) H_of_t(t) - psi_mle,
-              lower = t_lo, upper = t_hi, tol = 1e-8),
+  sample_from_level_set <- function(u) {
+    # Maximize sum(u * log theta(eta)) subject to H(theta(eta)) = psi_mle
+    res <- tryCatch(
+      nloptr::slsqp(
+        x0 = eta_hat,
+        fn = function(eta) pseudo_loglik_neg(eta, u),
+        heq = function(eta) psi_fn(eta) - psi_mle,
+        lower = rep(-500, J - 1L),
+        upper = rep(500, J - 1L),
+        control = list(xtol_rel = 1e-8, maxeval = 2000)
+      ),
       error = function(e) NULL
     )
-    
-    if (is.null(root)) return(NULL)
-    
-    eta_proj <- eta_hat + root$root * (eta_init - eta_hat)
-    if (abs(psi_fn(eta_proj) - psi_mle) > 1e-4) return(NULL)
-    
-    eta_proj
+
+    if (is.null(res)) return(NULL)
+
+    eta_opt <- res$par
+    if (abs(psi_fn(eta_opt) - psi_mle) > 1e-4) return(NULL)
+
+    eta_opt
   }
 
   function(history = NULL) {
     n_attempts <- 0L
 
     repeat {
-      gamma_draws <- stats::rgamma(J, shape = alpha * theta_hat, rate = 1)
-      theta_init <- gamma_draws / sum(gamma_draws)
-      eta_init <- log(theta_init[-J]) - log(theta_init[J])
+      # Draw u uniformly from the probability simplex
+      u <- -log(stats::runif(J))
+      u <- u / sum(u)
 
-      eta_proj <- project_to_level_set(eta_init)
+      eta_opt <- sample_from_level_set(u)
       n_attempts <- n_attempts + 1L
 
-      if (!is.null(eta_proj)) break
+      if (!is.null(eta_opt)) break
 
       if (n_attempts > 100L) {
         stop(sprintf(
-          "entropy_sampler_fn: failed to project onto level set after %d attempts (psi_mle = %.6f, J = %d).",
+          "entropy_sampler_fn: failed to sample from level set after %d attempts (psi_mle = %.6f, J = %d).",
           n_attempts, psi_mle, J
         ), call. = FALSE)
       }
     }
 
     list(
-      candidate = eta_proj,
-      diag = list(regime = "projection", n_attempts = n_attempts)
+      candidate = eta_opt,
+      diag = list(regime = "severini", n_attempts = n_attempts)
     )
   }
 }
 
 # ======================================================================
-# 3. Spec constructor
+# 4. Spec constructor
 # ======================================================================
 
 make_sampler <- function(config) {
@@ -142,6 +144,6 @@ make_sampler <- function(config) {
     sampler_fn = entropy_sampler_fn,
     min_branches = cfg$min_branches,
     branch_buffer = cfg$branch_buffer %||% 0L,
-    name = "Shannon entropy projection sampler (no effects)"
+    name = "Shannon entropy Severini sampler (no effects)"
   )
 }
