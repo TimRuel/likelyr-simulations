@@ -71,63 +71,93 @@ generate_eta_0_manual <- function(param_cfg) {
 }
 
 # ----------------------------------------------------------------------
-# Generate η₀ via entropy-targeted one-big + uniform remainder family
+# Generate initial η₀ via Simpson-targeted Dirichlet family
 # ----------------------------------------------------------------------
 
-generate_eta_0_entropy <- function(param_cfg) {
-  J <- param_cfg$J
+generate_eta_0 <- function(param_cfg) {
+  param_dim <- param_cfg$param_dim
+  J <- param_dim + 1
 
-  if (is.null(J) || J < 2L) {
-    stop("J must be an integer >= 2.", call. = FALSE)
-  }
+  # ------------------------------------------------------------
+  # Determine Simpson index target
+  # ------------------------------------------------------------
 
-  H_max <- log(J)
+  D_min <- 1 / J
+  D_max <- 1
 
-  if (!is.null(param_cfg$entropy_target_frac)) {
-    H_target <- param_cfg$entropy_target_frac * H_max
-  } else if (!is.null(param_cfg$entropy_target)) {
-    H_target <- param_cfg$entropy_target
+  if (!is.null(param_cfg$index_target_frac)) {
+    D_target <- D_min + param_cfg$index_target_frac * (D_max - D_min)
+  } else if (!is.null(param_cfg$index_target)) {
+    D_target <- param_cfg$index_target
   } else {
     stop(
-      "Must supply entropy_target_frac or entropy_target when mode = 'entropy'.",
+      "Must supply index_target_frac or index_target in parameter config.",
       call. = FALSE
     )
   }
 
-  if (H_target <= 0 || H_target >= H_max) {
+  if (D_target < D_min || D_target > D_max) {
     stop(
       sprintf(
-        "entropy_target must satisfy 0 < H < log(J) = %.4f (got %.4f).",
-        H_max,
-        H_target
+        "Simpson index target must satisfy 1/J ≤ D ≤ 1 (got %.4f).",
+        D_target
       ),
       call. = FALSE
     )
   }
 
-  H_of_a <- function(a) {
+  # ------------------------------------------------------------
+  # Simpson index for one-big + uniform remainder family
+  # ------------------------------------------------------------
+
+  D_of_a <- function(a) {
     if (a <= 0 || a >= 1) {
-      return(-Inf)
+      return(NA_real_)
     }
+
+    p1 <- a
     prest <- (1 - a) / (J - 1)
-    -a * log(a) - (J - 1) * prest * log(prest)
+
+    p1^2 + (J - 1) * prest^2
   }
 
+  # ------------------------------------------------------------
+  # Solve D(a) = D_target
+  # ------------------------------------------------------------
+
+  a_lower <- 1 / J
+  a_upper <- 1 - 1e-8
+
   root <- uniroot(
-    function(a) H_of_a(a) - H_target,
-    lower = 1 / J,
-    upper = 1 - 1e-8
+    function(a) D_of_a(a) - D_target,
+    lower = a_lower,
+    upper = a_upper
   )
 
   a_star <- root$root
-  theta_0 <- c(a_star, rep((1 - a_star) / (J - 1), J - 1))
+
+  # ------------------------------------------------------------
+  # Construct probability vector
+  # ------------------------------------------------------------
+
+  theta_0 <- c(
+    a_star,
+    rep((1 - a_star) / (J - 1), J - 1)
+  )
+
+  # small jitter to avoid exact symmetry / boundary artifacts
   theta_0 <- theta_0 + runif(J, 0, 1e-6)
   theta_0 <- theta_0 / sum(theta_0)
 
-  eta_0 <- theta_to_eta(theta_0)
-  names(eta_0) <- paste0("eta_", LETTERS[seq_len(J - 1L)])
+  # ------------------------------------------------------------
+  # Convert to logits
+  # ------------------------------------------------------------
 
-  list(eta_0 = eta_0, J = J, n_obs = NA_integer_)
+  eta_0 <- theta_to_eta(theta_0)
+
+  names(eta_0) <- paste0("eta_", LETTERS[1:(J - 1)])
+
+  eta_0
 }
 
 # ----------------------------------------------------------------------

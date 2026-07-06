@@ -1,76 +1,28 @@
 # ======================================================================
-# Estimand Specification — Shannon Entropy
-#   ψ(η) = H(θ(η)) = −Σ p_j log p_j
+# Estimand Specification — Simpson's Index
+#   ψ(η) = D(θ(η)) = Σ p_j^2
 # ======================================================================
 
 psi_fn <- function(param, data = NULL) {
   p <- softmax_from_eta(param)
-  -sum(p * log(p))
+  sum(p^2)
 }
 
-# ∂H/∂η_k = −p_k (log p_k + H)
 psi_jac <- function(param, data = NULL) {
   p <- softmax_from_eta(param)
-  H <- -sum(p * log(p))
-  -p[-length(p)] * (log(p[-length(p)]) + H)
+  D <- sum(p^2)
+  2 * p[-length(p)] * (p[-length(p)] - D)
 }
 
-search_interval_fn <- function(param_mle, data) {
-  J <- length(param_mle) + 1L
-  c(0, log(J))
-}
-
-make_estimand <- function(config, parameter = NULL, ...) {
-  cfg <- config$estimand
-
-  if (is.null(cfg)) {
-    stop("Config must contain an 'estimand' section.", call. = FALSE)
-  }
-
-  J <- parameter$J
-
-  if (is.null(J)) {
-    stop(
-      "J could not be determined: supply parameter.J in config, ",
-      "set parameter.mode = 'manual' with a theta_0 vector, or ",
-      "pass the parameter spec to make_estimand().",
-      call. = FALSE
-    )
-  }
-
-  required <- list(
-    increment = cfg$increment,
-    confidence_levels = cfg$confidence_levels,
-    gamma = cfg$gamma,
-    cutoff_buffer = cfg$cutoff_buffer,
-    uniroot_expand_factor = cfg$uniroot_expand_factor,
-    psi_lower = cfg$psi_lower
-  )
-
-  missing <- names(Filter(is.null, required))
-
-  if (length(missing) > 0L) {
-    stop(
-      paste0(
-        "Missing estimand tuning parameters: ",
-        paste(missing, collapse = ", "),
-        "."
-      ),
-      call. = FALSE
-    )
-  }
+make_estimand <- function(config) {
+  J <- config$parameter$J
 
   likelyr::estimand_spec(
     psi_fn = psi_fn,
     psi_jac = psi_jac,
-    search_interval_fn = search_interval_fn,
-    increment = required$increment,
-    confidence_levels = required$confidence_levels,
-    gamma = required$gamma,
-    cutoff_buffer = required$cutoff_buffer,
-    uniroot_expand_factor = required$uniroot_expand_factor,
-    psi_lower = required$psi_lower,
-    psi_upper = log(J),
-    name = "Shannon entropy"
+    psi_lower = 1 / J,
+    psi_upper = 1.0,
+    psi_closed = c(lower = TRUE, upper = FALSE),
+    name = "Simpson's index (psi)"
   )
 }

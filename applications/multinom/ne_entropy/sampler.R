@@ -6,20 +6,21 @@
 #
 #   Omega_psi_hat = { theta in Delta^{J-1} : H(theta) = psi_hat }
 #
-# following the approach of Severini (2007). A random direction
-# u = (u_1, ..., u_J) is drawn uniformly from the probability simplex,
-# and the point on the level set that maximizes the pseudo-likelihood
+# following the approach of Severini (2007), adapted for sparse data.
+# A random direction u is drawn uniformly from the simplex restricted
+# to the support of the observed data — categories with zero counts
+# receive u_j = 0. This keeps omega_hat vectors consistent with the
+# observed support while still exploring the level set within that
+# support, avoiding the pathology where uniform simplex draws assign
+# mass to unobserved categories and produce branch modes far from
+# psi_mle.
+#
+# The point on the level set maximizing the pseudo-likelihood
 #
 #   sum_j u_j * log(theta_j(eta))
 #
-# is located via constrained optimization in eta-space. This is
-# equivalent to Severini's step 2 in logit parameterization: the
-# pseudo-likelihood is a linear functional of log(theta), and
-# maximizing it over the level set selects a point whose location
-# depends on the random direction u but not on psi_mle itself.
-#
-# The MLE eta_hat is used as the warm start since it is already on
-# the level set by construction.
+# is located via constrained optimization in eta-space, with eta_hat
+# as the warm start since it is already on the level set.
 #
 # omega_hat is returned in logit (eta) space: log(theta_j / theta_J)
 # for j = 1, ..., J-1.
@@ -74,13 +75,15 @@ pseudo_loglik_neg <- function(eta, u) -pseudo_loglik(eta, u)
 entropy_sampler_fn <- function(param_dim, psi_mle, data, ...) {
   J <- param_dim + 1L
 
-  delta <- 1e-2
   counts <- data$count
+  support <- which(counts > 0)
+  n_support <- length(support)
+
+  delta <- 1e-8
   theta_hat <- (counts + delta) / sum(counts + delta)
   eta_hat <- log(theta_hat[-J]) - log(theta_hat[J])
 
   sample_from_level_set <- function(u) {
-    # Maximize sum(u * log theta(eta)) subject to H(theta(eta)) = psi_mle
     res <- tryCatch(
       nloptr::slsqp(
         x0 = eta_hat,
@@ -105,9 +108,10 @@ entropy_sampler_fn <- function(param_dim, psi_mle, data, ...) {
     n_attempts <- 0L
 
     repeat {
-      # Draw u uniformly from the probability simplex
-      u <- -log(stats::runif(J))
-      u <- u / sum(u)
+      # Draw u uniformly from the simplex restricted to observed support
+      u <- rep(0, J)
+      u_support <- -log(stats::runif(n_support))
+      u[support] <- u_support / sum(u_support)
 
       eta_opt <- sample_from_level_set(u)
       n_attempts <- n_attempts + 1L
@@ -116,15 +120,19 @@ entropy_sampler_fn <- function(param_dim, psi_mle, data, ...) {
 
       if (n_attempts > 100L) {
         stop(sprintf(
-          "entropy_sampler_fn: failed to sample from level set after %d attempts (psi_mle = %.6f, J = %d).",
-          n_attempts, psi_mle, J
+          "entropy_sampler_fn: failed to sample from level set after %d attempts (psi_mle = %.6f, J = %d, n_support = %d).",
+          n_attempts, psi_mle, J, n_support
         ), call. = FALSE)
       }
     }
 
     list(
       candidate = eta_opt,
-      diag = list(regime = "severini", n_attempts = n_attempts)
+      diag = list(
+        regime = "severini_support",
+        n_attempts = n_attempts,
+        n_support = n_support
+      )
     )
   }
 }
@@ -144,6 +152,6 @@ make_sampler <- function(config) {
     sampler_fn = entropy_sampler_fn,
     min_branches = cfg$min_branches,
     branch_buffer = cfg$branch_buffer %||% 0L,
-    name = "Shannon entropy Severini sampler (no effects)"
+    name = "Shannon entropy Severini sampler (support-restricted, no effects)"
   )
 }

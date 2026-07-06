@@ -67,7 +67,7 @@ generate_eta_0_manual <- function(param_cfg) {
   eta_0 <- theta_to_eta(theta)
   names(eta_0) <- paste0("eta_", LETTERS[seq_len(length(theta) - 1L)])
 
-  list(eta_0 = eta_0, J = length(theta), n_obs = n_obs)
+  list(eta_0 = eta_0, J = length(theta), n_obs = n_obs, param_dim_from_data = FALSE)
 }
 
 # ----------------------------------------------------------------------
@@ -127,29 +127,33 @@ generate_eta_0_entropy <- function(param_cfg) {
   eta_0 <- theta_to_eta(theta_0)
   names(eta_0) <- paste0("eta_", LETTERS[seq_len(J - 1L)])
 
-  list(eta_0 = eta_0, J = J, n_obs = NA_integer_)
+  list(eta_0 = eta_0, J = J, n_obs = NA_integer_, param_dim_from_data = FALSE)
 }
 
 # ----------------------------------------------------------------------
-# Generate η₀ from config or data: uniform placeholder of length J.
-# J is read from param_cfg$J if data is NULL, otherwise from nrow(data).
+# Generate η₀ for data-driven mode.
+#
+# At build time (data = NULL), a minimal length-1 placeholder is used
+# since the true dimension is unknown until the data is available.
+# param_dim_from_data = TRUE signals calibrate_parameter() to re-derive
+# param_dim from the MLE rather than enforcing the build-time dimension.
 # ----------------------------------------------------------------------
 
 generate_eta_0_data <- function(param_cfg, data = NULL) {
-  J <- if (!is.null(data)) nrow(data) else param_cfg$J
-
-  if (is.null(J) || J < 2L) {
-    stop(
-      "mode = 'data' requires either data to be passed or J to be set in config.",
-      call. = FALSE
-    )
+  if (!is.null(data)) {
+    J <- nrow(data)
+    J <- as.integer(J)
+    theta <- rep(1 / J, J)
+    eta_0 <- theta_to_eta(theta)
+    names(eta_0) <- paste0("eta_", seq_len(J - 1L))
+  } else {
+    # Minimal placeholder — dimension will be corrected at calibration time
+    J <- 2L
+    eta_0 <- 0
+    names(eta_0) <- "eta_1"
   }
 
-  J <- as.integer(J)
-  theta <- rep(1 / J, J)
-  eta_0 <- theta_to_eta(theta)
-  names(eta_0) <- paste0("eta_", seq_len(J - 1L))
-  list(eta_0 = eta_0, J = J, n_obs = NA_integer_)
+  list(eta_0 = eta_0, J = J, n_obs = NA_integer_, param_dim_from_data = TRUE)
 }
 
 # ----------------------------------------------------------------------
@@ -185,6 +189,7 @@ make_parameter <- function(config, data = NULL) {
 
   spec$J <- result$J
   spec$n_obs <- result$n_obs
+  spec$param_dim_from_data <- result$param_dim_from_data
 
   spec
 }

@@ -1,147 +1,175 @@
 # ======================================================================
-# Sampler Specification (No Effects Multinomial, Logit Parameterization)
-# Target: Shannon Entropy H(theta) = -sum(p_j * log(p_j))
+# Sampler Specification (Logit Parameterization)
+# Target: Simpson's Index D = sum(p_j^2)
 #
-# Samples omega_hat from the entropy level set
+# Exploits the geometry of Omega_psi_hat for Simpson's index:
 #
-#   Omega_psi_hat = { theta in Delta^{J-1} : H(theta) = psi_hat }
+#   L_psi_hat is a (J-2)-sphere of radius r = sqrt(psi_hat - 1/J)
+#   centered at c = (1/J)1 within the affine plane Pi.
 #
-# via projection. A random draw from Dirichlet(alpha * theta_hat),
-# where theta_hat is the MLE, is projected onto the level set via
-# constrained optimization. This biases proposals toward the region
-# of the level set that is consistent with the observed data, which
-# is critical when many categories have zero counts.
+#   Disconnected regime (psi_hat >= 1/(J-1)):
+#     Omega_psi_hat = J disjoint spherical caps, one near each vertex.
+#     On each draw, a cap index j is sampled proportional to empirical
+#     frequencies p_j = n_j / n, restricted to above-average categories
+#     (p_j > 1/J). If fewer than ceil(J/2) caps are eligible — meaning
+#     the data are too concentrated for frequency-weighted selection to
+#     be reliable — cap selection falls back to uniform over all J caps.
 #
-# omega_hat is returned in logit (eta) space: log(theta_j / theta_J)
-# for j = 1, ..., J-1.
+#     The polar angle gamma has marginal density proportional to
+#     sin(gamma)^(J-3) on [0, alpha] (from the surface element of the
+#     (J-2)-sphere). With the substitution s = sin^2(gamma), the CDF
+#     of gamma is the regularized incomplete beta function with
+#     parameters ((J-2)/2, 1/2), evaluated at sin^2(alpha). Exact
+#     inversion via qbeta() gives h = cos(gamma) with no rejection.
+#     All cap-independent quantities (alpha, draw_h) are precomputed
+#     once; cap axes n_j are precomputed for all J caps.
+#
+#   Connected regime (psi_hat < 1/(J-1)):
+#     L_psi_hat lies entirely within Delta^{J-1}. Base draws are taken
+#     uniformly from the full (J-2)-sphere by projecting a Gaussian
+#     onto the tangent space of Pi and normalizing. No rejection needed.
 # ======================================================================
 
 # ======================================================================
-# 1. Entropy helpers
+# 1. Sphere sampler constructor
+#
+# Returns function(history = NULL) -> list(candidate, diag):
+#   $candidate      — numeric vector (omega-hat in logit space)
+#   $diag$cap              — integer index j of the cap drawn from;
+#                            NA in the connected regime
+#   $diag$is_dominant_cap  — logical; TRUE if cap j matches the
+#                            data-dominant category (argmax of counts);
+#                            NA in the connected regime
+#   $diag$n_eligible_caps  — number of above-average caps available
+#                            for selection; NA in the connected regime
+#   $diag$cap_selection    — "weighted" | "uniform_fallback" | NA
+#
+# history is accepted but ignored since this sampler draws directly
+# from the geometry rather than adapting to past draws.
 # ======================================================================
 
-entropy_of <- function(theta) {
-  p <- theta[theta > 0]
-  -sum(p * log(p))
-}
-
-dominant_prob_for_entropy <- function(H_target, J) {
-  H_of_a <- function(a) {
-    if (a <= 0 || a >= 1) {
-      return(-Inf)
-    }
-    prest <- (1 - a) / (J - 1)
-    -a * log(a) - (J - 1) * prest * log(prest)
-  }
-  root <- tryCatch(
-    uniroot(
-      function(a) H_of_a(a) - H_target,
-      lower = 1 / J + 1e-10,
-      upper = 1 - 1e-10
-    ),
-    error = function(e) NULL
-  )
-  if (is.null(root)) {
-    return(NULL)
-  }
-  root$root
-}
-
-# ======================================================================
-# 2. Sampler constructor
-# ======================================================================
-
-entropy_sampler_fn <- function(param_dim, psi_mle, data, ...) {
+simpson_sampler_fn <- function(param_dim, psi_mle, data, ...) {
   J <- param_dim + 1L
+  r <- sqrt(psi_mle - 1 / J)
+  c_p <- rep(1 / J, J)
+  disconnected <- psi_mle >= 1 / (J - 1)
 
-  delta <- 1e-2
+  # Cap selection: restrict to above-average categories (p_j > 1/J),
+  # weighted by empirical frequencies. If fewer than ceil(J/2) caps
+  # are eligible, fall back to uniform selection over all J caps.
   counts <- data$count
-  theta_hat <- (counts + delta) / sum(counts + delta)
-  alpha <- 100.0
+  p_emp <- counts / sum(counts)
+  eligible <- which(p_emp > 1 / J)
+  p_eligible <- p_emp[eligible]
+  dominant_cap <- which.max(counts)
 
-  project_to_level_set <- function(eta_init) {
-    eta_hat <- log(theta_hat[-J]) - log(theta_hat[J])
-    
-    # Interpolate between eta_hat (H = psi_mle exactly) and eta_init
-    # along the path: eta(t) = eta_hat + t * (eta_init - eta_hat)
-    # At t = 0: eta = eta_hat, H = psi_mle
-    # At t = 1: eta = eta_init, H ≈ psi_mle (since alpha is large)
-    # We find t such that H(eta(t)) = psi_mle exactly.
-    
-    H_of_t <- function(t) psi_fn(eta_hat + t * (eta_init - eta_hat))
-    
-    H_init <- H_of_t(1.0)
-    
-    if (abs(H_init - psi_mle) <= 1e-4) return(eta_init)
-    
-    # Since H_of_t(0) = psi_mle and H_of_t(1) ≈ psi_mle but not exact,
-    # bracket around t = 1 on whichever side crosses psi_mle
-    if (H_init > psi_mle) {
-      t_lo <- 1.0
-      t_hi <- 2.0
-      while (H_of_t(t_hi) > psi_mle && t_hi < 100) t_hi <- t_hi * 2
-    } else {
-      t_lo <- 0.0
-      t_hi <- 1.0
+  min_eligible <- ceiling(J / 2)
+  use_weighted <- length(eligible) >= min_eligible
+
+  if (disconnected) {
+    # Cap axes: unit vector from c toward e_j within Pi, for all j
+    n_caps <- lapply(seq_len(J), function(j) {
+      ej_minus_c <- rep(-1 / J, J)
+      ej_minus_c[j] <- (J - 1) / J
+      ej_minus_c / sqrt(sum(ej_minus_c^2))
+    })
+
+    cos_alpha <- {
+      num <- 1 + J * sqrt((J - 2) * ((J - 1) * psi_mle - 1))
+      denom <- (J - 1) * sqrt((J - 1) * (J * psi_mle - 1))
+      num / denom
     }
-    
-    root <- tryCatch(
-      uniroot(function(t) H_of_t(t) - psi_mle,
-              lower = t_lo, upper = t_hi, tol = 1e-8),
-      error = function(e) NULL
-    )
-    
-    if (is.null(root)) return(NULL)
-    
-    eta_proj <- eta_hat + root$root * (eta_init - eta_hat)
-    if (abs(psi_fn(eta_proj) - psi_mle) > 1e-4) return(NULL)
-    
-    eta_proj
-  }
+    alpha <- acos(cos_alpha)
+    sin_alpha <- sin(alpha)
 
-  function(history = NULL) {
-    n_attempts <- 0L
-
-    repeat {
-      gamma_draws <- stats::rgamma(J, shape = alpha * theta_hat, rate = 1)
-      theta_init <- gamma_draws / sum(gamma_draws)
-      eta_init <- log(theta_init[-J]) - log(theta_init[J])
-
-      eta_proj <- project_to_level_set(eta_init)
-      n_attempts <- n_attempts + 1L
-
-      if (!is.null(eta_proj)) break
-
-      if (n_attempts > 100L) {
-        stop(sprintf(
-          "entropy_sampler_fn: failed to project onto level set after %d attempts (psi_mle = %.6f, J = %d).",
-          n_attempts, psi_mle, J
-        ), call. = FALSE)
+    draw_h <- if (J == 2L) {
+      function() 1
+    } else {
+      a <- (J - 2) / 2
+      p_alpha <- pbeta(sin_alpha^2, a, 0.5)
+      function() {
+        s <- qbeta(runif(1) * p_alpha, a, 0.5)
+        sqrt(1 - s)
       }
     }
 
-    list(
-      candidate = eta_proj,
-      diag = list(regime = "projection", n_attempts = n_attempts)
-    )
+    function(history = NULL) {
+      if (use_weighted) {
+        j <- eligible[
+          sample.int(length(eligible), size = 1L, prob = p_eligible)
+        ]
+        cap_selection <- "weighted"
+      } else {
+        j <- sample.int(J, size = 1L)
+        cap_selection <- "uniform_fallback"
+      }
+
+      n_j <- n_caps[[j]]
+      h <- draw_h()
+
+      w <- rnorm(J)
+      w <- w - mean(w)
+      w <- w - sum(w * n_j) * n_j
+      norm_w <- sqrt(sum(w * w))
+
+      v <- if (norm_w < 1e-10) {
+        r * n_j
+      } else {
+        u <- w / norm_w
+        r * (h * n_j + sqrt(max(0, 1 - h^2)) * u)
+      }
+
+      x <- c_p + v
+      list(
+        candidate = log(x[seq_len(J - 1L)]) - log(x[J]),
+        diag = list(
+          cap = j,
+          is_dominant_cap = j == dominant_cap,
+          n_eligible_caps = length(eligible),
+          cap_selection = cap_selection
+        )
+      )
+    }
+  } else {
+    function(history = NULL) {
+      repeat {
+        v <- rnorm(J)
+        v <- v - mean(v)
+        norm_v <- sqrt(sum(v * v))
+        if (norm_v < 1e-10) {
+          next
+        }
+        break
+      }
+      v <- v / norm_v * r
+      x <- c_p + v
+      list(
+        candidate = log(x[seq_len(J - 1L)]) - log(x[J]),
+        diag = list(
+          cap = NA_integer_,
+          is_dominant_cap = NA,
+          n_eligible_caps = NA_integer_,
+          cap_selection = NA_character_
+        )
+      )
+    }
   }
 }
 
 # ======================================================================
-# 3. Spec constructor
+# 2. Spec constructor
 # ======================================================================
 
 make_sampler <- function(config) {
   cfg <- config$sampler
-
   if (is.null(cfg)) {
     stop("Config must contain a 'sampler' section.", call. = FALSE)
   }
 
   likelyr::sampler_spec(
-    sampler_fn = entropy_sampler_fn,
+    sampler_fn = simpson_sampler_fn,
     min_branches = cfg$min_branches,
     branch_buffer = cfg$branch_buffer %||% 0L,
-    name = "Shannon entropy projection sampler (no effects)"
+    name = "Simpson's index geometric sampler"
   )
 }

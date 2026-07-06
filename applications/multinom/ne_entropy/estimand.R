@@ -1,6 +1,11 @@
 # ======================================================================
 # Estimand Specification — Shannon Entropy
 #   ψ(η) = H(θ(η)) = −Σ p_j log p_j
+#
+# psi_upper is set to Inf at build time and derived from the data at
+# calibration time via search_interval_fn, which computes log(J) from
+# the data-derived parameter dimension. This supports site-specific
+# models where J varies across datasets.
 # ======================================================================
 
 psi_fn <- function(param, data = NULL) {
@@ -25,17 +30,6 @@ make_estimand <- function(config, parameter = NULL, ...) {
 
   if (is.null(cfg)) {
     stop("Config must contain an 'estimand' section.", call. = FALSE)
-  }
-
-  J <- parameter$J
-
-  if (is.null(J)) {
-    stop(
-      "J could not be determined: supply parameter.J in config, ",
-      "set parameter.mode = 'manual' with a theta_0 vector, or ",
-      "pass the parameter spec to make_estimand().",
-      call. = FALSE
-    )
   }
 
   required <- list(
@@ -70,7 +64,8 @@ make_estimand <- function(config, parameter = NULL, ...) {
     cutoff_buffer = required$cutoff_buffer,
     uniroot_expand_factor = required$uniroot_expand_factor,
     psi_lower = required$psi_lower,
-    psi_upper = log(J),
+    psi_upper = log(parameter$J),
+    psi_0 = log(parameter$J) / 2,
     name = "Shannon entropy"
   )
 }
