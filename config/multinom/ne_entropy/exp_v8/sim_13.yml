@@ -1,0 +1,80 @@
+experiment:
+  version: exp_v8
+  seed_base: 9000
+  specs_dir: /home/tbr0780/likelyr-simulations/applications/multinom/ne_entropy
+  logs_dir: /gpfs/home/tbr0780/likelyr-simulations/logs/multinom/ne_entropy/exp_v8
+  exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/ne_entropy/exp_v8
+  description: |
+    Single-iteration IL vs PL analysis of Shannon entropy under the no-effects multinomial model, applied to each of the 20 sites in the dune meadow vegetation dataset (Jongman et al. 1987). Each simulation corresponds to one site; the count vector is read directly from vegan::dune using the sim index as the row index.
+simulation:
+  sim_id: sim_13
+  seed_base: 1309000
+  iterations: 1
+design:
+  design_type: sequence
+  overrides: []
+parameter:
+  mode: data
+  J: 30
+  seed: 1309000
+likelihood:
+  name: ~
+estimand:
+  increment: 0.01
+  confidence_levels:
+  - 0.9
+  - 0.95
+  - 0.99
+  gamma: 0.9
+  cutoff_buffer: 2.0
+  uniroot_expand_factor: 0.02
+  psi_lower: 0.0
+nuisance:
+  name: Multinomial cell probabilities entropy nuisance parameter (ZSE)
+sampler:
+  min_branches: 250
+  branch_buffer: 0
+  seed_base: 1319000
+traversal:
+  increment: 0.01
+  traversal_method: topdown
+  confidence_levels:
+  - 0.9
+  - 0.95
+  - 0.99
+  cutoff_buffer: 3.0
+  n_adjacent: 3
+  max_mode_shifts: 10
+  k_recent: 3
+  drop_multiplier: 10.0
+  cap_multiplier: 10.0
+  mode_gap_multiplier: 5.0
+  interval_buffer: 2.0
+  max_drop_frac: 10.0
+  resid_tol: 0.0001
+  profile_retry_on: constraint
+  branch_retry_on: constraint
+  rejection_reasons:
+  - empty_restricted_grid
+  - no_feasible_grid_point
+  - mode_on_psi_boundary
+  - mode_locator_failed
+  - mode_eval_failed_after_snap
+  - mode_too_low
+  - oscillation
+  - mode_shift_exhausted
+  - jump_left
+  - jump_right
+  use_mode_locator_for_profile: yes
+solver:
+  localsolver: SLSQP
+  control:
+    xtol_rel: 1.0e-08
+    maxeval: 2000
+  localtol: 1.0e-06
+  max_retries: 25
+execution:
+  packages: likelyr
+data:
+  n_obs: ~
+  seed_base: 1329000
