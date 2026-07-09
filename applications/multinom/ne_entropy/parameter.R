@@ -133,25 +133,45 @@ generate_eta_0_entropy <- function(param_cfg) {
 # ----------------------------------------------------------------------
 # Generate η₀ for data-driven mode.
 #
-# At build time (data = NULL), a minimal length-1 placeholder is used
-# since the true dimension is unknown until the data is available.
+# Loads the dune dataset and determines J from the observed support at
+# the site identified by sim_id. This ensures the correct site-specific
+# J is known at build time, so psi_upper = log(J) is set correctly in
+# the estimand spec.
 # param_dim_from_data = TRUE signals calibrate_parameter() to re-derive
 # param_dim from the MLE rather than enforcing the build-time dimension.
 # ----------------------------------------------------------------------
 
-generate_eta_0_data <- function(param_cfg, data = NULL) {
-  if (!is.null(data)) {
-    J <- nrow(data)
-    J <- as.integer(J)
-    theta <- rep(1 / J, J)
-    eta_0 <- theta_to_eta(theta)
-    names(eta_0) <- paste0("eta_", seq_len(J - 1L))
-  } else {
-    # Minimal placeholder — dimension will be corrected at calibration time
-    J <- 2L
-    eta_0 <- 0
-    names(eta_0) <- "eta_1"
+generate_eta_0_data <- function(param_cfg, sim_id = NULL) {
+  if (is.null(sim_id) || !nzchar(sim_id)) {
+    stop(
+      "mode = 'data' requires simulation$sim_id to be defined.",
+      call. = FALSE
+    )
   }
+
+  row_index <- as.integer(sub("sim_", "", sim_id))
+
+  if (is.na(row_index) || row_index < 1L || row_index > 20L) {
+    stop(
+      sprintf("Could not parse valid row index from sim_id '%s'.", sim_id),
+      call. = FALSE
+    )
+  }
+
+  data("dune", package = "vegan", envir = environment())
+  counts <- as.integer(dune[row_index, ])
+  J <- as.integer(sum(counts > 0L))
+
+  if (J < 2L) {
+    stop(
+      sprintf("Site %d has fewer than 2 observed species.", row_index),
+      call. = FALSE
+    )
+  }
+
+  theta <- rep(1 / J, J)
+  eta_0 <- theta_to_eta(theta)
+  names(eta_0) <- paste0("eta_", seq_len(J - 1L))
 
   list(eta_0 = eta_0, J = J, n_obs = NA_integer_, param_dim_from_data = TRUE)
 }
@@ -173,7 +193,7 @@ make_parameter <- function(config, data = NULL) {
     mode,
     manual  = generate_eta_0_manual(param_cfg),
     entropy = generate_eta_0_entropy(param_cfg),
-    data    = generate_eta_0_data(param_cfg, data),
+    data    = generate_eta_0_data(param_cfg, sim_id = config$simulation$sim_id),
     stop(sprintf("Unknown parameter mode '%s'.", mode), call. = FALSE)
   )
 
