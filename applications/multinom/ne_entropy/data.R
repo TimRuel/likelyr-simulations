@@ -5,6 +5,10 @@
 # to species with positive counts. Unobserved species are treated as
 # absent rather than merely unsampled, consistent with the site-level
 # analyses of Tiffeau-Mayer et al. (2024).
+#
+# The sampler internally augments the parameter space with a phantom
+# "other" category to allow IL branches to explore entropy values above
+# log(J_obs), without affecting the profile likelihood computation.
 # ======================================================================
 
 generate_data <- function(config, parameter) {
