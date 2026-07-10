@@ -1,5 +1,10 @@
 # ======================================================================
 # Data (No Effects Multinomial — Dune Application)
+#
+# Returns the count vector for a single dune meadow site, restricted
+# to species with positive counts. Unobserved species are treated as
+# absent rather than merely unsampled, consistent with the site-level
+# analyses of Tiffeau-Mayer et al. (2024).
 # ======================================================================
 
 generate_data <- function(config, parameter) {
@@ -21,10 +26,11 @@ generate_data <- function(config, parameter) {
   data("dune", package = "vegan", envir = environment())
 
   counts <- as.integer(dune[row_index, ])
+  observed <- counts > 0L
 
   data.frame(
-    cell  = colnames(dune),
-    count = counts,
+    cell  = colnames(dune)[observed],
+    count = counts[observed],
     row.names = NULL
   )
 }

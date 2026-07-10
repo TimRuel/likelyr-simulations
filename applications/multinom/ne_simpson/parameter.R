@@ -1,5 +1,6 @@
 # ======================================================================
 # Multinomial Parameter Specification (No Effects, Logit Parameterization)
+# Target: Simpson's Index D = sum(p_j^2)
 # ======================================================================
 
 # ----------------------------------------------------------------------
@@ -67,20 +68,23 @@ generate_eta_0_manual <- function(param_cfg) {
   eta_0 <- theta_to_eta(theta)
   names(eta_0) <- paste0("eta_", LETTERS[seq_len(length(theta) - 1L)])
 
-  list(eta_0 = eta_0, J = length(theta), n_obs = n_obs)
+  list(eta_0 = eta_0, J = length(theta), n_obs = n_obs, param_dim_from_data = FALSE)
 }
 
 # ----------------------------------------------------------------------
-# Generate initial η₀ via Simpson-targeted Dirichlet family
+# Generate η₀ via Simpson-index-targeted one-big + uniform remainder
+# family.
+#
+# NOTE: this was previously named generate_eta_0() while the switch in
+# make_parameter() called generate_eta_0_index() — a naming mismatch
+# that would have errored on first use. Also fixed: this now returns
+# the same list(eta_0, J, n_obs, param_dim_from_data) structure as the
+# other branches, rather than a bare eta_0 vector.
 # ----------------------------------------------------------------------
 
-generate_eta_0 <- function(param_cfg) {
+generate_eta_0_index <- function(param_cfg) {
   param_dim <- param_cfg$param_dim
-  J <- param_dim + 1
-
-  # ------------------------------------------------------------
-  # Determine Simpson index target
-  # ------------------------------------------------------------
+  J <- param_dim + 1L
 
   D_min <- 1 / J
   D_max <- 1
@@ -99,87 +103,83 @@ generate_eta_0 <- function(param_cfg) {
   if (D_target < D_min || D_target > D_max) {
     stop(
       sprintf(
-        "Simpson index target must satisfy 1/J ≤ D ≤ 1 (got %.4f).",
+        "Simpson index target must satisfy 1/J <= D <= 1 (got %.4f).",
         D_target
       ),
       call. = FALSE
     )
   }
 
-  # ------------------------------------------------------------
-  # Simpson index for one-big + uniform remainder family
-  # ------------------------------------------------------------
-
   D_of_a <- function(a) {
     if (a <= 0 || a >= 1) {
       return(NA_real_)
     }
-
     p1 <- a
     prest <- (1 - a) / (J - 1)
-
     p1^2 + (J - 1) * prest^2
   }
 
-  # ------------------------------------------------------------
-  # Solve D(a) = D_target
-  # ------------------------------------------------------------
-
-  a_lower <- 1 / J
-  a_upper <- 1 - 1e-8
-
   root <- uniroot(
     function(a) D_of_a(a) - D_target,
-    lower = a_lower,
-    upper = a_upper
+    lower = 1 / J,
+    upper = 1 - 1e-8
   )
 
   a_star <- root$root
-
-  # ------------------------------------------------------------
-  # Construct probability vector
-  # ------------------------------------------------------------
-
-  theta_0 <- c(
-    a_star,
-    rep((1 - a_star) / (J - 1), J - 1)
-  )
-
-  # small jitter to avoid exact symmetry / boundary artifacts
+  theta_0 <- c(a_star, rep((1 - a_star) / (J - 1), J - 1))
   theta_0 <- theta_0 + runif(J, 0, 1e-6)
   theta_0 <- theta_0 / sum(theta_0)
 
-  # ------------------------------------------------------------
-  # Convert to logits
-  # ------------------------------------------------------------
-
   eta_0 <- theta_to_eta(theta_0)
+  names(eta_0) <- paste0("eta_", LETTERS[seq_len(J - 1L)])
 
-  names(eta_0) <- paste0("eta_", LETTERS[1:(J - 1)])
-
-  eta_0
+  list(eta_0 = eta_0, J = J, n_obs = NA_integer_, param_dim_from_data = FALSE)
 }
 
 # ----------------------------------------------------------------------
-# Generate η₀ from config or data: uniform placeholder of length J.
-# J is read from param_cfg$J if data is NULL, otherwise from nrow(data).
+# Generate η₀ for data-driven mode.
+#
+# Loads the dune dataset and determines J from the observed support at
+# the site identified by sim_id. This ensures the correct site-specific
+# J is known at build time, so psi_lower = 1/J is set correctly in the
+# estimand spec.
+# param_dim_from_data = TRUE signals calibrate_parameter() to re-derive
+# param_dim from the MLE rather than enforcing the build-time dimension.
 # ----------------------------------------------------------------------
 
-generate_eta_0_data <- function(param_cfg, data = NULL) {
-  J <- if (!is.null(data)) nrow(data) else param_cfg$J
-
-  if (is.null(J) || J < 2L) {
+generate_eta_0_data <- function(param_cfg, sim_id = NULL) {
+  if (is.null(sim_id) || !nzchar(sim_id)) {
     stop(
-      "mode = 'data' requires either data to be passed or J to be set in config.",
+      "mode = 'data' requires simulation$sim_id to be defined.",
       call. = FALSE
     )
   }
 
-  J <- as.integer(J)
+  row_index <- as.integer(sub("sim_", "", sim_id))
+
+  if (is.na(row_index) || row_index < 1L || row_index > 20L) {
+    stop(
+      sprintf("Could not parse valid row index from sim_id '%s'.", sim_id),
+      call. = FALSE
+    )
+  }
+
+  data("dune", package = "vegan", envir = environment())
+  counts <- as.integer(dune[row_index, ])
+  J <- as.integer(sum(counts > 0L))
+
+  if (J < 2L) {
+    stop(
+      sprintf("Site %d has fewer than 2 observed species.", row_index),
+      call. = FALSE
+    )
+  }
+
   theta <- rep(1 / J, J)
   eta_0 <- theta_to_eta(theta)
   names(eta_0) <- paste0("eta_", seq_len(J - 1L))
-  list(eta_0 = eta_0, J = J, n_obs = NA_integer_)
+
+  list(eta_0 = eta_0, J = J, n_obs = NA_integer_, param_dim_from_data = TRUE)
 }
 
 # ----------------------------------------------------------------------
@@ -193,13 +193,13 @@ make_parameter <- function(config, data = NULL) {
     stop("Config must contain a 'parameter' section.", call. = FALSE)
   }
 
-  mode <- param_cfg$mode %||% "entropy"
+  mode <- param_cfg$mode %||% "index"
 
   result <- switch(
     mode,
-    manual  = generate_eta_0_manual(param_cfg),
-    entropy = generate_eta_0_entropy(param_cfg),
-    data    = generate_eta_0_data(param_cfg, data),
+    manual = generate_eta_0_manual(param_cfg),
+    index  = generate_eta_0_index(param_cfg),
+    data   = generate_eta_0_data(param_cfg, sim_id = config$simulation$sim_id),
     stop(sprintf("Unknown parameter mode '%s'.", mode), call. = FALSE)
   )
 
@@ -215,6 +215,7 @@ make_parameter <- function(config, data = NULL) {
 
   spec$J <- result$J
   spec$n_obs <- result$n_obs
+  spec$param_dim_from_data <- result$param_dim_from_data
 
   spec
 }

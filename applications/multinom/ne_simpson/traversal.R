@@ -31,9 +31,6 @@ simpson_mode_locator_fn <- function(
   function(omega_hat, psi_hint = NULL) {
     branch_evaluator <- branch_binder(omega_hat)
 
-    # -------------------------------------------------------------------
-    # Golden section search over [lower, upper]
-    # -------------------------------------------------------------------
     phi <- (sqrt(5) - 1) / 2
     tol <- increment / 10
     a <- lower
@@ -75,16 +72,10 @@ simpson_mode_locator_fn <- function(
 
     psi_hat <- (a + b) / 2
 
-    # -------------------------------------------------------------------
-    # Snap to nearest grid point, anchored at lower
-    # -------------------------------------------------------------------
     psi_hat_snapped <- lower +
       round((psi_hat - lower) / increment) * increment
     psi_hat_snapped <- min(max(psi_hat_snapped, lower), upper)
 
-    # -------------------------------------------------------------------
-    # Final evaluation at snapped mode
-    # -------------------------------------------------------------------
     result <- tryCatch(
       branch_evaluator(psi_hat_snapped, omega_hat),
       error = function(e) NULL
@@ -135,6 +126,7 @@ make_traversal <- function(config) {
   likelyr::traversal_spec(
     increment = cfg$increment,
     traversal_method = cfg$traversal_method %||% "topdown",
+    warmstart_fn = NULL,
     mode_locator_fn = simpson_mode_locator_fn,
     confidence_levels = cfg$confidence_levels,
     cutoff_buffer = cfg$cutoff_buffer %||% 1.5,
@@ -145,6 +137,13 @@ make_traversal <- function(config) {
     cap_multiplier = cfg$cap_multiplier %||% 10.0,
     mode_gap_multiplier = cfg$mode_gap_multiplier %||% 1.0,
     interval_buffer = cfg$interval_buffer %||% 1.0,
+    max_drop_frac = cfg$max_drop_frac %||% 10.0,
+    resid_tol = cfg$resid_tol %||% 1e-3,
+    profile_retry_on = cfg$profile_retry_on %||%
+      c("monotonicity", "constraint", "drop"),
+    branch_retry_on = cfg$branch_retry_on %||% character(0),
+    use_mode_locator_for_profile = cfg$use_mode_locator_for_profile %||% FALSE,
+    rejection_reasons = cfg$rejection_reasons,
     name = "Branch traversal strategy"
   )
 }

@@ -37,8 +37,7 @@ entropy_mode_locator_fn <- function(
   function(omega_hat, psi_hint = NULL) {
     branch_evaluator <- branch_binder(omega_hat)
 
-    # Warm start: convert omega_hat probability vector to eta-space
-    init_guess <- theta_to_eta(omega_hat)
+    init_guess <- omega_hat
 
     phi <- (sqrt(5) - 1) / 2
     tol <- increment / 10
