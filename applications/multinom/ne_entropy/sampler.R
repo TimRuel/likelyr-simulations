@@ -4,34 +4,43 @@
 #
 # Samples omega_hat from the entropy level set
 #
-#   Omega_psi_hat = { theta in Delta^{J_obs-1} : H(theta) = psi_hat }
+#   Omega_psi_hat = { theta in Delta^{J-1} : H(theta) = psi_hat }
 #
-# following the approach of Severini (2007), adapted for sparse and
-# near-boundary data.
+# following the approach of Severini (2007). A random direction u is
+# drawn uniformly from the FULL J-dimensional simplex — no restriction
+# to the observed support. This is the cleanest adherence to the
+# theoretical level set: any probability vector over all J = 30 cells
+# with entropy equal to psi_mle is a legitimate element of
+# Omega_psi_hat, regardless of which cells happen to have nonzero
+# counts in this particular sample.
 #
-# GEOMETRIC ISSUE NEAR THE BOUNDARY:
-#   The entropy level set shrinks to a single point (the uniform
-#   distribution) as psi_mle -> log(J_obs). When psi_mle is close to
-#   this boundary, every omega_hat sampled directly in the J_obs-
-#   dimensional space collapses to nearly the same point regardless of
-#   the random direction u, producing degenerate branch mode diversity.
-#   This is a property of the entropy constraint itself, not a defect
-#   in how u is drawn.
+# Support restriction was previously used to keep omega_hat consistent
+# with the observed data, but it produced omega_hat vectors whose
+# unsupported components converged to an anomalous, solver-tolerance-
+# driven near-zero value (e.g. all landing at the same ~1e-7 floor)
+# rather than a genuine corner solution. This created a numerically
+# delicate target for the branch's constrained optimization to match
+# near singular points of the constraint surface (e.g. psi =
+# log(k) for small k), producing sharp, non-concave notches in
+# individual branches at those points. Drawing u over the full
+# simplex avoids this: unsupported cells receive genuine, well-behaved
+# random weight from the same Dirichlet(1) draw as everything else,
+# so there's no artificial near-zero floor for the branch optimizer
+# to chase.
 #
-# FIX — sampler-internal augmentation:
-#   The parameter space used ONLY by the sampler is augmented with
-#   n_phantom zero-count categories, chosen so that
-#     log(J_obs + n_phantom) - psi_mle >= psi_buffer
-#   This keeps the augmented level set away from its own boundary,
-#   giving the constrained optimization genuine room to explore. The
-#   solution is then re-referenced from the phantom reference category
-#   back to the last observed category and truncated to the original
-#   J_obs - 1 dimensions before being returned. The data, likelihood,
-#   and profile are never touched by this augmentation — only the
-#   sampler's internal proposal mechanism.
+# J = 30 is fixed for every site (see ne_data_dune.R / ne_parameter.R),
+# so psi_upper = log(30) provides a large, fixed buffer above psi_mle,
+# giving branches genuine room to have interior modes.
 #
-# omega_hat is returned in logit (eta) space: log(theta_j / theta_{J_obs})
-# for j = 1, ..., J_obs - 1.
+# The point on the level set maximizing the pseudo-likelihood
+#
+#   sum_j u_j * log(theta_j(eta))
+#
+# is located via constrained optimization in eta-space, with eta_hat
+# as the warm start since it is already on the level set.
+#
+# omega_hat is returned in logit (eta) space: log(theta_j / theta_J)
+# for j = 1, ..., J-1.
 # ======================================================================
 
 # ======================================================================
@@ -59,43 +68,31 @@ pseudo_loglik_neg <- function(eta, u) -pseudo_loglik(eta, u)
 # ======================================================================
 
 entropy_sampler_fn <- function(param_dim, psi_mle, data, sampler_cfg = list(), ...) {
-  J_obs <- param_dim + 1L
+  J <- param_dim + 1L
 
   counts <- data$count
-  support <- which(counts > 0)
-  n_support <- length(support)
+  observed <- which(counts > 0)
+  unobserved <- which(counts == 0)
+  n_observed <- length(observed)
+  n_unobserved <- length(unobserved)
 
-  # Target buffer between psi_mle and the augmented upper boundary
-  # log(J_aug). Larger buffer gives the sampler more room to produce
-  # diverse omega_hat, at the cost of more phantom categories.
-  psi_buffer <- sampler_cfg$psi_buffer %||% 0.5
-  max_phantom <- sampler_cfg$max_phantom %||% 200L
-
-  n_phantom <- max(1L, ceiling(exp(psi_mle + psi_buffer) - J_obs))
-  n_phantom <- min(n_phantom, max_phantom)
-
-  J_aug <- J_obs + n_phantom
-  counts_aug <- c(counts, rep(0L, n_phantom))
+  # Maximum number of additional (unobserved) cells to activate per draw,
+  # beyond the always-included observed cells. Defaults to allowing up
+  # to all unobserved cells to be eligible.
+  max_extra <- sampler_cfg$max_extra %||% n_unobserved
 
   delta <- 1e-8
-  theta_hat_aug <- (counts_aug + delta) / sum(counts_aug + delta)
-
-  # eta_hat in augmented space: log(theta_j / theta_phantom_last)
-  eta_hat_aug <- log(theta_hat_aug[-J_aug]) - log(theta_hat_aug[J_aug])
-
-  psi_fn_aug <- function(eta) {
-    p <- softmax_from_eta(eta)
-    -sum(p * log(pmax(p, 1e-300)))
-  }
+  theta_hat <- (counts + delta) / sum(counts + delta)
+  eta_hat <- log(theta_hat[-J]) - log(theta_hat[J])
 
   sample_from_level_set <- function(u) {
     res <- tryCatch(
       nloptr::slsqp(
-        x0 = eta_hat_aug,
-        fn = function(eta) -sum(u * log(pmax(softmax_from_eta(eta), 1e-300))),
-        heq = function(eta) psi_fn_aug(eta) - psi_mle,
-        lower = rep(-500, J_aug - 1L),
-        upper = rep(500, J_aug - 1L),
+        x0 = eta_hat,
+        fn = function(eta) pseudo_loglik_neg(eta, u),
+        heq = function(eta) psi_fn(eta) - psi_mle,
+        lower = rep(-500, J - 1L),
+        upper = rep(500, J - 1L),
         control = list(xtol_rel = 1e-8, maxeval = 2000)
       ),
       error = function(e) NULL
@@ -104,56 +101,51 @@ entropy_sampler_fn <- function(param_dim, psi_mle, data, sampler_cfg = list(), .
     if (is.null(res)) return(NULL)
 
     eta_opt <- res$par
-    if (abs(psi_fn_aug(eta_opt) - psi_mle) > 1e-4) return(NULL)
+    if (abs(psi_fn(eta_opt) - psi_mle) > 1e-4) return(NULL)
 
-    # Re-reference from the phantom reference category (J_aug) to the
-    # last observed category (J_obs). This formula is unchanged by the
-    # number of phantom categories, since only the first J_obs
-    # components of eta_opt are ever read:
-    #   log(theta_j / theta_{J_obs})
-    #     = log(theta_j / theta_phantom) - log(theta_{J_obs} / theta_phantom)
-    #     = eta_opt[j] - eta_opt[J_obs]
-    eta_reref <- eta_opt[seq_len(J_obs - 1L)] - eta_opt[J_obs]
-
-    # Diagnostic only: entropy of the re-referenced candidate evaluated
-    # back in the original J_obs-dimensional space.
-    psi_reref <- entropy_of(softmax_from_eta(eta_reref))
-
-    list(eta_reref = eta_reref, psi_reref = psi_reref)
+    eta_opt
   }
 
   function(history = NULL) {
     n_attempts <- 0L
 
     repeat {
-      # Draw u uniformly from the simplex restricted to the observed
-      # support (phantom categories always get u_j = 0).
-      u <- rep(0, J_aug)
-      u_support <- -log(stats::runif(n_support))
-      u[support] <- u_support / sum(u_support)
+      # Randomly choose how many additional (previously-zero) cells to
+      # activate this draw, then which ones, then draw u over the
+      # resulting subset (always-included observed cells + the random
+      # extras). Cells outside this subset get u_j = 0.
+      n_extra <- sample.int(max_extra + 1L, size = 1L) - 1L
+      extra <- if (n_extra > 0L) {
+        sample(unobserved, size = n_extra)
+      } else {
+        integer(0)
+      }
+      active <- c(observed, extra)
 
-      result <- sample_from_level_set(u)
+      u <- rep(0, J)
+      u_active_raw <- -log(stats::runif(length(active)))
+      u[active] <- u_active_raw / sum(u_active_raw)
+
+      eta_opt <- sample_from_level_set(u)
       n_attempts <- n_attempts + 1L
 
-      if (!is.null(result)) break
+      if (!is.null(eta_opt)) break
 
       if (n_attempts > 100L) {
         stop(sprintf(
-          "entropy_sampler_fn: failed to sample from level set after %d attempts (psi_mle = %.6f, J_obs = %d, n_phantom = %d).",
-          n_attempts, psi_mle, J_obs, n_phantom
+          "entropy_sampler_fn: failed to sample from level set after %d attempts (psi_mle = %.6f, J = %d, n_active = %d).",
+          n_attempts, psi_mle, J, length(active)
         ), call. = FALSE)
       }
     }
 
     list(
-      candidate = result$eta_reref,
+      candidate = eta_opt,
       diag = list(
-        regime = "severini_support_augmented",
+        regime = "severini_random_subset",
         n_attempts = n_attempts,
-        n_support = n_support,
-        n_phantom = n_phantom,
-        psi_reref = result$psi_reref,
-        psi_reref_gap = result$psi_reref - psi_mle
+        n_active = length(active),
+        n_extra = length(extra)
       )
     )
   }
@@ -174,12 +166,6 @@ make_sampler <- function(config) {
     sampler_fn = entropy_sampler_fn,
     min_branches = cfg$min_branches,
     branch_buffer = cfg$branch_buffer %||% 0L,
-    extra = list(
-      sampler_cfg = list(
-        psi_buffer = cfg$psi_buffer,
-        max_phantom = cfg$max_phantom
-      )
-    ),
-    name = "Shannon entropy Severini sampler (support-restricted, boundary-augmented, no effects)"
+    name = "Shannon entropy Severini sampler (full simplex, no effects)"
   )
 }

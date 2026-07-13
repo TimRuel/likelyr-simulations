@@ -1,10 +1,16 @@
 # ======================================================================
 # Data (No Effects Multinomial — Dune Application)
 #
-# Returns the count vector for a single dune meadow site, restricted
-# to species with positive counts. Unobserved species are treated as
-# absent rather than merely unsampled, consistent with the site-level
-# analyses of Tiffeau-Mayer et al. (2024).
+# Returns the full count vector (all J = 30 species) for a single dune
+# meadow site, including zero-count species. Zero-count categories are
+# numerically inert in the entropy calculation (x log x -> 0), so this
+# does not change psi_mle relative to filtering to observed species
+# only. What it does change is psi_upper = log(J), which stays fixed at
+# log(30) for every site rather than collapsing to log(J_obs) for
+# species-poor or near-uniform sites. This gives the sampler and
+# traversal genuine room between psi_mle and psi_upper, avoiding the
+# boundary-clustering pathology seen when J was restricted to the
+# observed support.
 # ======================================================================
 
 generate_data <- function(config, parameter) {
@@ -26,11 +32,10 @@ generate_data <- function(config, parameter) {
   data("dune", package = "vegan", envir = environment())
 
   counts <- as.integer(dune[row_index, ])
-  observed <- counts > 0L
 
   data.frame(
-    cell  = colnames(dune)[observed],
-    count = counts[observed],
+    cell  = colnames(dune),
+    count = counts,
     row.names = NULL
   )
 }

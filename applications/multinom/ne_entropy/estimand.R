@@ -2,10 +2,10 @@
 # Estimand Specification — Shannon Entropy
 #   ψ(η) = H(θ(η)) = −Σ p_j log p_j
 #
-# psi_upper is set to Inf at build time and derived from the data at
-# calibration time via search_interval_fn, which computes log(J) from
-# the data-derived parameter dimension. This supports site-specific
-# models where J varies across datasets.
+# J is now fixed at 30 for every site (see ne_data_dune.R / ne_parameter.R),
+# so psi_upper = log(30) is constant and provides a large buffer above
+# psi_mle for every site, rather than psi_upper = log(J_obs) collapsing
+# toward psi_mle for species-poor or near-uniform sites.
 # ======================================================================
 
 psi_fn <- function(param, data = NULL) {
