@@ -134,6 +134,18 @@ make_traversal <- function(config) {
     )
   }
 
+  # Branch-side jitter-multistart budget (audit fix #1). When left unset
+  # (NULL), calibrate_traversal() inherits solver$max_retries for
+  # profile/branch parity. Set it LOW here — .best_eval keeps the max
+  # over {warm, anchor, jitters}, so a large budget pushes branches
+  # toward the discontinuous global envelope (jaggier), the opposite of
+  # what we want. See HANDOFF: continuation beats global max.
+  max_retries <- if (!is.null(cfg$max_retries)) {
+    as.integer(cfg$max_retries)
+  } else {
+    NULL
+  }
+
   likelyr::traversal_spec(
     increment = cfg$increment,
     traversal_method = cfg$traversal_method %||% "topdown",
@@ -153,6 +165,9 @@ make_traversal <- function(config) {
     profile_retry_on = cfg$profile_retry_on %||%
       c("monotonicity", "constraint", "drop"),
     branch_retry_on = cfg$branch_retry_on %||% character(0),
+    max_retries = max_retries,
+    branch_selection = cfg$branch_selection %||% "envelope",
+    branch_extent = cfg$branch_extent %||% "per_branch",
     use_mode_locator_for_profile = cfg$use_mode_locator_for_profile %||% FALSE,
     rejection_reasons = cfg$rejection_reasons,
     name = "Branch traversal strategy"

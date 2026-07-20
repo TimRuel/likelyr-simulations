@@ -189,11 +189,31 @@ make_parameter <- function(config, data = NULL) {
     stop(sprintf("Unknown parameter mode '%s'.", mode), call. = FALSE)
   )
 
+  # --------------------------------------------------------------------
+  # Lever 2: finite eta bounds on the branch solver.
+  #
+  # In the concentration regime theta -> vertex, so eta = log(theta_j /
+  # theta_J) -> +/- Inf; the branch's constrained optimizer then chases
+  # its objective out toward numerically ill-conditioned eta, a second
+  # source of jagged branches. Clamping eta to [-eta_bound, +eta_bound]
+  # keeps every candidate theta a hair off the simplex vertices. The
+  # branch-binder already honors finite param bounds, so no core change
+  # is needed. eta_bound = Inf (default) recovers the unbounded solve.
+  #
+  # Note this bounds the SOLVER's search box; the sampler already clamps
+  # its own draws to +/-500 independently.
+  # --------------------------------------------------------------------
+  eta_bound <- param_cfg$eta_bound %||% Inf
+  if (!is.numeric(eta_bound) || length(eta_bound) != 1L ||
+      is.na(eta_bound) || eta_bound <= 0) {
+    stop("parameter$eta_bound must be a positive scalar (or Inf).", call. = FALSE)
+  }
+
   spec <- likelyr::parameter_spec(
     name = "Multinomial logits (no effects, baseline parameterization)",
     param_0 = result$eta_0,
-    param_lower = rep(-Inf, length(result$eta_0)),
-    param_upper = rep(Inf, length(result$eta_0)),
+    param_lower = rep(-eta_bound, length(result$eta_0)),
+    param_upper = rep(eta_bound, length(result$eta_0)),
     param_mle_fn = eta_mle_fn,
     eq = NULL,
     eq_jac = NULL

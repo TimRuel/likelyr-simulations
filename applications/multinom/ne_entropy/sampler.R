@@ -6,27 +6,30 @@
 #
 #   Omega_psi_hat = { theta in Delta^{J-1} : H(theta) = psi_hat }
 #
-# following the approach of Severini (2007). A random direction u is
-# drawn uniformly from the FULL J-dimensional simplex — no restriction
-# to the observed support. This is the cleanest adherence to the
-# theoretical level set: any probability vector over all J = 30 cells
-# with entropy equal to psi_mle is a legitimate element of
-# Omega_psi_hat, regardless of which cells happen to have nonzero
-# counts in this particular sample.
+# following the approach of Severini (2007), adapted for sparse data.
 #
-# Support restriction was previously used to keep omega_hat consistent
-# with the observed data, but it produced omega_hat vectors whose
-# unsupported components converged to an anomalous, solver-tolerance-
-# driven near-zero value (e.g. all landing at the same ~1e-7 floor)
-# rather than a genuine corner solution. This created a numerically
-# delicate target for the branch's constrained optimization to match
-# near singular points of the constraint surface (e.g. psi =
-# log(k) for small k), producing sharp, non-concave notches in
-# individual branches at those points. Drawing u over the full
-# simplex avoids this: unsupported cells receive genuine, well-behaved
-# random weight from the same Dirichlet(1) draw as everything else,
-# so there's no artificial near-zero floor for the branch optimizer
-# to chase.
+# ACTIVE SET CONSTRUCTION:
+#   On each draw, the "active" set of cells consists of:
+#     (a) all cells with positive observed count (always included), and
+#     (b) a randomly chosen subset of the zero-count cells, of random
+#         size between 0 and max_extra.
+#   A single Dirichlet(1) draw for u is then taken over the ENTIRE
+#   active set (observed cells and any extra zero-count cells treated
+#   identically — no weight-shrinking of the extras). Cells outside the
+#   active set get u_j = 0.
+#
+#   This differs from strict support-restriction (which always used
+#   exactly the observed cells and produced omega_hat vectors whose
+#   unsupported components converged to an identical solver-tolerance
+#   floor rather than a genuine corner solution — a numerically
+#   delicate target for the branch's constrained optimization near
+#   points like psi = log(k)) and from full-simplex sampling (which
+#   gives every zero-count cell real weight on every draw, reintroducing
+#   the extreme-eta / long-flat-tail problems seen on sparse sites
+#   before J was fixed at 30). Randomizing which zero-count cells are
+#   active, and how many, means no single subset's boundary geometry
+#   dominates every branch, while genuinely varying the branch
+#   population draw to draw.
 #
 # J = 30 is fixed for every site (see ne_data_dune.R / ne_parameter.R),
 # so psi_upper = log(30) provides a large, fixed buffer above psi_mle,
@@ -64,6 +67,32 @@ pseudo_loglik <- function(eta, u) {
 pseudo_loglik_neg <- function(eta, u) -pseudo_loglik(eta, u)
 
 # ======================================================================
+# 2b. Nuisance-population floor (Lever 1, integrated-likelihood only)
+#
+#   p_omega <- (1 - eps) * p_omega + eps / J
+#
+# Mixing an accepted omega-hat draw toward uniform gives its cell
+# distribution FULL support, which makes the branch objective
+# E_loglik = Σ p_omega·log θ strictly concave in every coordinate. That
+# damps the competing concentration-corner optima on the entropy level
+# set (the source of jagged branches) and keeps the optimal θ off the
+# simplex vertices so η stays finite / well-conditioned.
+#
+# The floor lives HERE (on the sieve-drawn omega-hats), NOT in E_loglik,
+# so the profile curve — which evaluates E_loglik at omega_hat = param_mle
+# — stays classical/unfloored. It deliberately nudges the draw off the
+# exact entropy level set; that is the intended regularization, applied
+# only after the raw draw has been accepted. eps = 0 is a no-op. See
+# dev/multinomial/ne_entropy/baseline_il.R for the sweep motivating
+# eps ~ 0.02 on this data.
+# ======================================================================
+
+apply_omega_floor <- function(p_omega, eps) {
+  if (eps <= 0) return(p_omega)
+  (1 - eps) * p_omega + eps / length(p_omega)
+}
+
+# ======================================================================
 # 3. Sampler constructor
 # ======================================================================
 
@@ -76,10 +105,17 @@ entropy_sampler_fn <- function(param_dim, psi_mle, data, sampler_cfg = list(), .
   n_observed <- length(observed)
   n_unobserved <- length(unobserved)
 
-  # Maximum number of additional (unobserved) cells to activate per draw,
-  # beyond the always-included observed cells. Defaults to allowing up
-  # to all unobserved cells to be eligible.
+  # Maximum number of additional (zero-count) cells to activate per
+  # draw, beyond the always-included observed cells. Defaults to
+  # allowing up to all unobserved cells to be eligible.
   max_extra <- sampler_cfg$max_extra %||% n_unobserved
+
+  # Integrated-likelihood-only nuisance-population floor (Lever 1).
+  eps_floor <- sampler_cfg$eps_floor %||% 0
+  if (!is.numeric(eps_floor) || length(eps_floor) != 1L ||
+      eps_floor < 0 || eps_floor >= 1) {
+    stop("sampler$eps_floor must be a scalar in [0, 1).", call. = FALSE)
+  }
 
   delta <- 1e-8
   theta_hat <- (counts + delta) / sum(counts + delta)
@@ -110,10 +146,6 @@ entropy_sampler_fn <- function(param_dim, psi_mle, data, sampler_cfg = list(), .
     n_attempts <- 0L
 
     repeat {
-      # Randomly choose how many additional (previously-zero) cells to
-      # activate this draw, then which ones, then draw u over the
-      # resulting subset (always-included observed cells + the random
-      # extras). Cells outside this subset get u_j = 0.
       n_extra <- sample.int(max_extra + 1L, size = 1L) - 1L
       extra <- if (n_extra > 0L) {
         sample(unobserved, size = n_extra)
@@ -139,13 +171,20 @@ entropy_sampler_fn <- function(param_dim, psi_mle, data, sampler_cfg = list(), .
       }
     }
 
+    # Lever 1: floor the ACCEPTED draw toward uniform (integrated-only).
+    if (eps_floor > 0) {
+      theta_floored <- apply_omega_floor(softmax_from_eta(eta_opt), eps_floor)
+      eta_opt <- theta_to_eta(theta_floored)
+    }
+
     list(
       candidate = eta_opt,
       diag = list(
-        regime = "severini_random_subset",
+        regime = "severini_random_active_set",
         n_attempts = n_attempts,
+        n_extra = n_extra,
         n_active = length(active),
-        n_extra = length(extra)
+        eps_floor = eps_floor
       )
     )
   }
@@ -166,6 +205,7 @@ make_sampler <- function(config) {
     sampler_fn = entropy_sampler_fn,
     min_branches = cfg$min_branches,
     branch_buffer = cfg$branch_buffer %||% 0L,
-    name = "Shannon entropy Severini sampler (full simplex, no effects)"
+    name = "Shannon entropy Severini sampler (random active set, no effects)",
+    sampler_cfg = cfg
   )
 }

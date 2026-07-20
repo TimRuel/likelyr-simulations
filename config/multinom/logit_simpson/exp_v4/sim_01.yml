@@ -29,7 +29,7 @@ estimand:
 nuisance:
   name: Multinomial cell probabilities simpson's index nuisance parameter (ZSE)
 sampler:
-  min_branches: 15
+  min_branches: 50
   branch_buffer: 0
   seed_base: 114000
 traversal:
