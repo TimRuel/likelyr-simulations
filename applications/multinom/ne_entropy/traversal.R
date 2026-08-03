@@ -168,6 +168,8 @@ make_traversal <- function(config) {
     max_retries = max_retries,
     branch_selection = cfg$branch_selection %||% "envelope",
     branch_extent = cfg$branch_extent %||% "per_branch",
+    profile_selection = cfg$profile_selection %||% "envelope",
+    adopt_mult = cfg$adopt_mult %||% 1.2,
     use_mode_locator_for_profile = cfg$use_mode_locator_for_profile %||% FALSE,
     rejection_reasons = cfg$rejection_reasons,
     name = "Branch traversal strategy"

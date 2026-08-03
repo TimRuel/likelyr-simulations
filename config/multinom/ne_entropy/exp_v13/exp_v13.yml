@@ -1,0 +1,123 @@
+# ============================================================
+# Experiment metadata
+# ============================================================
+experiment:
+  name: multinom_no_effects_logit_entropy_dune
+  version: exp_v13
+  seed_base: 13000
+  specs_dir: /home/tbr0780/likelyr-simulations/applications/multinom/ne_entropy
+  exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/ne_entropy/exp_v13
+  description: >
+    Single-iteration IL vs PL analysis of Shannon entropy under the
+    no-effects multinomial model, applied to each of the 20 sites in
+    the dune meadow vegetation dataset (Jongman et al. 1987). Each
+    simulation corresponds to one site; the count vector is read
+    directly from vegan::dune using the sim index as the row index.
+    Zero-count species are excluded; J is derived from the observed
+    support at each site.
+
+# ============================================================
+# Simulation template
+# ============================================================
+base_simulation:
+
+  iterations: 1
+
+  parameter:
+    mode: data
+
+  likelihood:
+    name: ~
+
+  estimand:
+    # CI levels / cutoff / grid increment now live under traversal: below
+    # (estimand_spec() no longer takes these). psi_lower is the only
+    # estimand-level tuning knob that's still live.
+    psi_lower: 0.0
+
+  nuisance:
+    name: "Multinomial cell probabilities entropy nuisance parameter (ZSE)"
+
+  sampler:
+    min_branches: 250
+    branch_buffer: 0
+    # Numerical conditioning (chosen from the eps sweep in
+    # dev/multinomial/ne_entropy/validate_floor_eps_sweep.R): full sieve
+    # feasibility, negligible objective perturbation.
+    eps_floor: 0.005
+
+  traversal:
+    increment: 0.01
+    traversal_method: topdown
+    confidence_levels: [0.90, 0.95, 0.99]
+    cutoff_buffer: 3.0
+    n_adjacent: 3
+    max_mode_shifts: 10
+    k_recent: 3
+    drop_multiplier: 10.0
+    cap_multiplier: 10.0
+    mode_gap_multiplier: 3.0
+    interval_buffer: 2.0
+    max_drop_frac: 10.0
+    resid_tol: 1.0e-4
+    profile_retry_on:
+      - constraint
+    branch_retry_on:
+      - constraint
+    # Continuation branch definition + global extent (ride the principal
+    # branch, only traverse where it can matter to the aggregate) instead
+    # of the discontinuous global-envelope / per-branch legacy defaults.
+    branch_selection: continuation
+    branch_extent: global
+    # profile_selection = "adopt" (2026-08-03): fixes the single-point
+    # "hitch" seen in ~half of exp_v12's completed profiles (one grid
+    # point pops above the smooth declining trend, next point snaps back)
+    # by permitting the warm-start chain to permanently switch onto a
+    # better branch when a monotonicity-violating candidate's improvement
+    # clearly exceeds recent local step sizes (adopt_mult * median of the
+    # last k_recent declining steps). Validated on exp_v12's dune row 16
+    # (roughness 0.036 -> 0.009, violations 3 -> 1) and row 4 (correctly
+    # declined a misleading small improvement, result unchanged). See
+    # likelyr commit a82dac2.
+    profile_selection: adopt
+    adopt_mult: 1.2
+    # Numerical-validity + adaptive relevance screening only. The old
+    # shape screens (mode_on_psi_boundary / mode_too_low / oscillation /
+    # jump / mode_shift_exhausted) collapsed the sieve accept rate and
+    # biased/roughened the IL by selecting which ensemble members
+    # survived (2026-07-18 ablation) — retired in favor of numerical-only
+    # validity gates. mode_uncompetitive (2026-07-20) is the adaptive
+    # relevance gate: sieve() keeps drawing until it has min_branches
+    # seeds that actually contribute to the aggregate, instead of
+    # accepting any numerically-valid seed and finding out its quality
+    # only after full traversal.
+    rejection_reasons:
+      - empty_restricted_grid
+      - no_feasible_grid_point
+      - mode_locator_failed
+      - mode_eval_failed_after_snap
+      - mode_nonfinite
+      - mode_infeasible
+      - mode_uncompetitive
+    use_mode_locator_for_profile: true
+
+  solver:
+    localsolver: SLSQP
+    control:
+      xtol_rel: 1.0e-08
+      maxeval: 2000
+    localtol: 1.0e-06
+    max_retries: 25
+
+  execution:
+    packages: likelyr
+
+  data:
+    n_obs: ~
+
+# ============================================================
+# Design
+# ============================================================
+design:
+  type: sequence
+  n_sims: 20
