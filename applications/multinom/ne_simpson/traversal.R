@@ -123,6 +123,18 @@ make_traversal <- function(config) {
     )
   }
 
+  # Branch-side jitter-multistart budget. When left unset (NULL),
+  # calibrate_traversal() inherits solver$max_retries for profile/branch
+  # parity — see the entropy application's traversal.R for the full
+  # rationale (branch_selection = "continuation" only uses retries to
+  # rescue a failed warm start, so a larger budget is harmless there,
+  # unlike under "envelope").
+  max_retries <- if (!is.null(cfg$max_retries)) {
+    as.integer(cfg$max_retries)
+  } else {
+    NULL
+  }
+
   likelyr::traversal_spec(
     increment = cfg$increment,
     traversal_method = cfg$traversal_method %||% "topdown",
@@ -142,6 +154,11 @@ make_traversal <- function(config) {
     profile_retry_on = cfg$profile_retry_on %||%
       c("monotonicity", "constraint", "drop"),
     branch_retry_on = cfg$branch_retry_on %||% character(0),
+    max_retries = max_retries,
+    branch_selection = cfg$branch_selection %||% "envelope",
+    branch_extent = cfg$branch_extent %||% "per_branch",
+    profile_selection = cfg$profile_selection %||% "envelope",
+    adopt_mult = cfg$adopt_mult %||% 1.2,
     use_mode_locator_for_profile = cfg$use_mode_locator_for_profile %||% FALSE,
     rejection_reasons = cfg$rejection_reasons,
     name = "Branch traversal strategy"

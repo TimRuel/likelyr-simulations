@@ -139,12 +139,17 @@ generate_eta_0_index <- function(param_cfg) {
 # ----------------------------------------------------------------------
 # Generate η₀ for data-driven mode.
 #
-# Loads the dune dataset and determines J from the observed support at
-# the site identified by sim_id. This ensures the correct site-specific
-# J is known at build time, so psi_lower = 1/J is set correctly in the
-# estimand spec.
-# param_dim_from_data = TRUE signals calibrate_parameter() to re-derive
-# param_dim from the MLE rather than enforcing the build-time dimension.
+# J is fixed at 30 (the full dune species list) for every site, rather
+# than being derived from the observed support at build time (2026-08-03
+# decision, matching the no-effects entropy application for the same
+# reason: a variable, observed-support-only J caused psi_upper to
+# collapse toward psi_mle for species-poor or near-uniform sites,
+# clustering the sampler/traversal near the domain boundary). See
+# data.R, which now also returns the FULL 30-species count vector
+# (zero-count species included) rather than filtering to observed-only,
+# so J here and in data.R stay consistent. param_dim_from_data = TRUE is
+# retained since the actual MLE dimension is still confirmed from the
+# data at calibration time.
 # ----------------------------------------------------------------------
 
 generate_eta_0_data <- function(param_cfg, sim_id = NULL) {
@@ -165,15 +170,7 @@ generate_eta_0_data <- function(param_cfg, sim_id = NULL) {
   }
 
   data("dune", package = "vegan", envir = environment())
-  counts <- as.integer(dune[row_index, ])
-  J <- as.integer(sum(counts > 0L))
-
-  if (J < 2L) {
-    stop(
-      sprintf("Site %d has fewer than 2 observed species.", row_index),
-      call. = FALSE
-    )
-  }
+  J <- as.integer(ncol(dune))
 
   theta <- rep(1 / J, J)
   eta_0 <- theta_to_eta(theta)

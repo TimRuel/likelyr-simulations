@@ -55,15 +55,31 @@ simpson_sampler_fn <- function(param_dim, psi_mle, data, ...) {
   disconnected <- psi_mle >= 1 / (J - 1)
 
   # Cap selection: restrict to above-average categories (p_j > 1/J),
-  # weighted by empirical frequencies. If fewer than ceil(J/2) caps
-  # are eligible, fall back to uniform selection over all J caps.
+  # weighted by empirical frequencies. If fewer than half of the
+  # OBSERVED categories are eligible, fall back to uniform selection
+  # over all J caps.
+  #
+  # min_eligible is scaled off n_observed, not J (2026-08-03 fix): J is
+  # now fixed at 30 for every site (see parameter.R), so `eligible` --
+  # which can only ever be a subset of the observed categories, since
+  # unobserved ones have p_emp = 0 and can never clear the > 1/J bar --
+  # was being compared against ceiling(J/2) = 15, a bar sized for the
+  # full 30-category space rather than the site's actual data richness
+  # (5-14 observed species across the 20 dune sites). That made the
+  # weighted branch structurally unreachable regardless of how
+  # concentrated or diffuse the data were. Scaling to n_observed
+  # restores the original relative intent: "weight by frequency if at
+  # least half of the categories this site has data on are
+  # above-average", now correctly anchored to the site's own support
+  # rather than the fixed global J.
   counts <- data$count
+  n_observed <- sum(counts > 0)
   p_emp <- counts / sum(counts)
   eligible <- which(p_emp > 1 / J)
   p_eligible <- p_emp[eligible]
   dominant_cap <- which.max(counts)
 
-  min_eligible <- ceiling(J / 2)
+  min_eligible <- ceiling(n_observed / 2)
   use_weighted <- length(eligible) >= min_eligible
 
   if (disconnected) {
