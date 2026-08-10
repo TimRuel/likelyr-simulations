@@ -64,26 +64,88 @@ echo "  From: ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}"
 echo "  To:   ${LOCAL_PATH}"
 echo "============================================================"
 
+# ======================================================================
+# Run ssh without MSYS path mangling
+#
+# ssh.exe is a NATIVE Windows binary, so when this script runs under an
+# MSYS2 shell — which is what `make` uses on Windows, via
+# SHELL := C:/rtools45/usr/bin/bash.exe — MSYS2 rewrites any argument that
+# looks like a POSIX absolute path into a Windows path before ssh sees it.
+# The remote command "cat /projects/p32397/..." therefore arrived at Quest
+# as "cat C:/rtools45/projects/p32397/...", and the remote cat failed while
+# this script's own messages still printed the correct path. Maddening.
+#
+# The two variables disable that conversion (MSYS_NO_PATHCONV for Git Bash,
+# MSYS2_ARG_CONV_EXCL for MSYS2/Rtools). They are set per-invocation rather
+# than exported, so the local `tar` below — an MSYS binary that genuinely
+# wants POSIX paths — is unaffected.
+#
+# On Linux and macOS both variables are simply ignored.
+# ======================================================================
+run_ssh() {
+  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+    "${SSH}" "${REMOTE_USER}@${REMOTE_HOST}" "$@"
+}
+
 case "$MODE" in
   bundle)
+    REMOTE_BUNDLE="${REMOTE_PATH}/analysis/bundle.rds"
+
     mkdir -p "${LOCAL_PATH}/analysis"
 
-    # cat over SSH rather than scp: one connection, and it fails loudly
-    # with the remote's own error message if the bundle isn't there yet.
-    if ! "${SSH}" "${REMOTE_USER}@${REMOTE_HOST}" \
-      "cat ${REMOTE_PATH}/analysis/bundle.rds" \
-      > "${LOCAL_PATH}/analysis/bundle.rds"; then
+    # Check existence before writing anything, so a missing bundle can't
+    # leave a truncated or error-text file behind, and so the failure names
+    # the real cause instead of being inferred from a broken transfer.
+    #
+    # `|| STATUS=$?` rather than `if ! run_ssh ...` because inside an
+    # `if !` block $? is the negation's status, not ssh's — and the
+    # distinction matters: 255 is ssh itself failing (VPN, auth, host),
+    # anything else is the remote `test -f` reporting the file is absent.
+    SSH_STATUS=0
+    run_ssh "test -f '${REMOTE_BUNDLE}'" || SSH_STATUS=$?
+
+    if [[ "$SSH_STATUS" -ne 0 ]]; then
+      echo ""
+      if [[ "$SSH_STATUS" -eq 255 ]]; then
+        echo "❌ Could not connect to ${REMOTE_HOST} (ssh exit 255)."
+        echo "   This is a connection failure, not a missing file —"
+        echo "   check that the Northwestern VPN is active."
+      else
+        echo "❌ Connected fine, but no bundle at:"
+        echo "     ${REMOTE_BUNDLE}"
+        echo "   (remote test -f exit ${SSH_STATUS})"
+        echo ""
+        echo "   On Quest:"
+        echo "     make results EXP_CONFIG=<path/to/exp_vX.yml>"
+        echo "   Or re-run this with MODE=tree to pull the per-sim files."
+      fi
+      exit 1
+    fi
+
+    # cat rather than scp: one connection, and stdout streams straight to
+    # the destination without a temp file.
+    SSH_STATUS=0
+    run_ssh "cat '${REMOTE_BUNDLE}'" > "${LOCAL_PATH}/analysis/bundle.rds" \
+      || SSH_STATUS=$?
+
+    if [[ "$SSH_STATUS" -ne 0 ]]; then
       rm -f "${LOCAL_PATH}/analysis/bundle.rds"
       echo ""
-      echo "❌ Could not fetch ${REMOTE_PATH}/analysis/bundle.rds"
-      echo "   On Quest, run:"
-      echo "     make analyze-exp EXP_CONFIG=<path/to/exp_vX.yml>"
-      echo "     make bundle      EXP_CONFIG=<path/to/exp_vX.yml>"
-      echo "   Or re-run this with mode 'tree' to pull the per-sim files."
+      echo "❌ Transfer failed for ${REMOTE_BUNDLE} (ssh exit ${SSH_STATUS})"
+      exit 1
+    fi
+
+    # A zero-byte result means the transfer "succeeded" without data —
+    # worth catching here rather than as a confusing readRDS error later.
+    if [[ ! -s "${LOCAL_PATH}/analysis/bundle.rds" ]]; then
+      rm -f "${LOCAL_PATH}/analysis/bundle.rds"
+      echo ""
+      echo "❌ Downloaded 0 bytes from ${REMOTE_BUNDLE}"
       exit 1
     fi
 
     echo "Downloaded: ${LOCAL_PATH}/analysis/bundle.rds"
+    ls -lh "${LOCAL_PATH}/analysis/bundle.rds" | awk '{print "  size: " $5}'
     ;;
 
   tree)
@@ -91,8 +153,7 @@ case "$MODE" in
 
     # Stream a tar archive of all sim_*/analysis folders over a single SSH
     # connection and extract locally — avoids repeated SSH handshakes
-    "${SSH}" "${REMOTE_USER}@${REMOTE_HOST}" \
-      "cd ${REMOTE_PATH} && tar czf - sim_*/analysis/" | \
+    run_ssh "cd '${REMOTE_PATH}' && tar czf - sim_*/analysis/" | \
       tar xzf - -C "${LOCAL_PATH}"
 
     echo "Extracted per-sim analysis folders into: ${LOCAL_PATH}"
