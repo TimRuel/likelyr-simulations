@@ -92,8 +92,20 @@ ANALYSIS_DIR="${SIM_DIR}/analysis"
 # the same config directory, then to "simulation". That keeps every
 # already-expanded experiment working without a `make gen` re-run.
 # ===============================
+# A missing key is the NORMAL case here, not an error — the whole point of
+# the fallback is that most sim yamls predate kind:. The trailing `|| true`
+# is therefore load-bearing: grep exits 1 when it finds nothing, and under
+# `set -euo pipefail` a failing command substitution inside an assignment
+# kills the script silently, before any of the messages below can print.
 read_kind() {
-  grep -m1 '^\s*kind:' "$1" 2>/dev/null | sed 's/.*kind:\s*//' | tr -d '[:space:]"'
+  local file="$1"
+
+  [[ -f "$file" ]] || return 0
+
+  grep -m1 '^[[:space:]]*kind:' "$file" 2>/dev/null \
+    | sed 's/.*kind:[[:space:]]*//' \
+    | tr -d '[:space:]"' \
+    || true
 }
 
 KIND="$(read_kind "$SIM_YML")"
@@ -101,9 +113,16 @@ KIND="$(read_kind "$SIM_YML")"
 if [[ -z "$KIND" ]]; then
   CONFIG_SIM_DIR="$(dirname "$SIM_YML")"
   for EXP_YML in "$CONFIG_SIM_DIR"/exp_*.yml; do
-    if [[ -f "$EXP_YML" ]]; then
-      KIND="$(read_kind "$EXP_YML")"
-      [[ -n "$KIND" ]] && break
+    # An unmatched glob stays literal, so the -f test is what skips it.
+    # Written as an explicit if/continue rather than `[[ ... ]] && break`
+    # because a trailing false test as the loop body's last command makes
+    # the loop itself return non-zero under `set -e`.
+    [[ -f "$EXP_YML" ]] || continue
+
+    KIND="$(read_kind "$EXP_YML")"
+
+    if [[ -n "$KIND" ]]; then
+      break
     fi
   done
 fi

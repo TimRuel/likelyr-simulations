@@ -58,7 +58,9 @@ cd "$PROJECT_ROOT"
 # ===============================
 # Read exp_dir from yaml (the data, on project storage)
 # ===============================
-EXP_RUN_DIR="$(grep -m1 '^\s*exp_dir:' "$EXP_YML" | sed 's/.*exp_dir:\s*//' | tr -d '[:space:]"')"
+# `|| true` so a missing exp_dir reaches the error message below instead of
+# killing the script silently via set -e on a failed command substitution.
+EXP_RUN_DIR="$(grep -m1 '^[[:space:]]*exp_dir:' "$EXP_YML" | sed 's/.*exp_dir:[[:space:]]*//' | tr -d '[:space:]"' || true)"
 
 if [[ -z "$EXP_RUN_DIR" ]]; then
   echo "❌ ERROR: experiment\$exp_dir missing or unparseable in $EXP_YML"
