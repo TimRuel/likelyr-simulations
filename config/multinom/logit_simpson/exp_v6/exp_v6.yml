@@ -1,0 +1,108 @@
+# ============================================================
+# Experiment metadata
+# ============================================================
+experiment:
+  name: multinom_no_effects_logit_simpson_dune
+  version: exp_v6
+  seed_base: 5000
+  specs_dir: /home/tbr0780/likelyr-simulations/applications/multinom/ne_simpson
+  exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/logit_simpson/exp_v6
+  description: >
+    Single-iteration IL vs PL analysis of Simpson's index under the
+    no-effects multinomial model, applied to each of the 20 sites in
+    the dune meadow vegetation dataset (Jongman et al. 1987). Each
+    simulation corresponds to one site; the count vector is read
+    directly from vegan::dune using the sim index as the row index.
+    J is fixed at 30 (2026-08-03) for every site, mirroring the
+    no-effects entropy application, rather than derived from observed
+    support — avoids psi_lower drifting toward psi_mle for
+    species-poor sites.
+
+# ============================================================
+# Simulation template
+# ============================================================
+base_simulation:
+
+  iterations: 1
+
+  parameter:
+    mode: data
+
+  likelihood:
+    name: ~
+
+  estimand:
+    # estimand_spec() computes psi_lower = 1/J internally (J fixed at 30,
+    # so this is a constant 1/30 for every site) and takes no other
+    # config-driven arguments — see estimand.R. Nothing to set here; kept
+    # as a non-null block only because make_estimand() requires one.
+    {}
+
+  nuisance:
+    name: "Multinomial cell probabilities simpson's index nuisance parameter (ZSE)"
+
+  sampler:
+    min_branches: 250
+    branch_buffer: 0
+    # No eps_floor: unlike the entropy application's Severini
+    # pseudo-likelihood sampler, this sampler draws directly from
+    # Simpson's closed-form spherical level-set geometry — no
+    # active-set optimization, so the numerical-conditioning issue
+    # eps_floor addresses there doesn't have a direct analogue here.
+    # Revisit if branch solves prove slow/ill-conditioned in practice.
+
+  traversal:
+    increment: 0.001
+    traversal_method: topdown
+    confidence_levels: [0.90, 0.95, 0.99]
+    cutoff_buffer: 3.0
+    n_adjacent: 3
+    max_mode_shifts: 10
+    k_recent: 3
+    drop_multiplier: 10.0
+    cap_multiplier: 10.0
+    mode_gap_multiplier: 3.0
+    interval_buffer: 2.0
+    max_drop_frac: 10.0
+    resid_tol: 1.0e-4
+    profile_retry_on:
+      - constraint
+    branch_retry_on:
+      - constraint
+    # Same methodology as the entropy application (validated 2026-07 to
+    # 2026-08): continuation branch definition + global extent, adaptive
+    # relevance screening in sieve(), and adopt-mode profile traversal.
+    branch_selection: continuation
+    branch_extent: global
+    profile_selection: adopt
+    adopt_mult: 1.2
+    rejection_reasons:
+      - empty_restricted_grid
+      - no_feasible_grid_point
+      - mode_locator_failed
+      - mode_eval_failed_after_snap
+      - mode_nonfinite
+      - mode_infeasible
+      - mode_uncompetitive
+    use_mode_locator_for_profile: true
+
+  solver:
+    localsolver: SLSQP
+    control:
+      xtol_rel: 1.0e-08
+      maxeval: 2000
+    localtol: 1.0e-06
+    max_retries: 25
+
+  execution:
+    packages: likelyr
+
+  data:
+    n_obs: ~
+
+# ============================================================
+# Design
+# ============================================================
+design:
+  type: sequence
+  n_sims: 20
