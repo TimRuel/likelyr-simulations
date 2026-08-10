@@ -7,8 +7,16 @@ set -euo pipefail
 # Contract:
 #   • Accepts <path/to/config/.../sim_XX.yml>
 #   • Reads exp_dir and sim_id from the yaml to locate data
-#   • Calls R/analyze_sim.R with the sim data directory
-#   • Skips if analysis outputs already exist
+#   • Reads experiment$kind to choose the analyzer:
+#       simulation (default) → R/analyze_sim.R
+#       application          → R/analyze_app.R
+#   • Skips if that analyzer's outputs already exist
+#
+# Why kind is declared in config rather than inferred: applications and
+# simulations share the exp_vX / sim_XX naming convention and the same
+# on-disk layout, so nothing about the path distinguishes them. Reading
+# it from the yaml keeps `make analyze-exp` a single entry point for
+# both instead of two targets to remember.
 # ============================================================
 
 # ===============================
@@ -21,11 +29,19 @@ fi
 
 # ===============================
 # Expected output filenames
-# (must match what analyze_sim.R actually writes)
+# (must match what the analyzers actually write)
 # ===============================
-POINT_FILE="sim_point_metrics.rds"
-INTERVAL_FILE="sim_interval_metrics.rds"
-INVALID_CI_FILE="invalid_ci_index.rds"
+SIM_OUTPUTS=(
+  "sim_point_metrics.rds"
+  "sim_interval_metrics.rds"
+  "invalid_ci_index.rds"
+)
+
+APP_OUTPUTS=(
+  "app_estimates.rds"
+  "app_curves.rds"
+  "app_context.rds"
+)
 
 # ===============================
 # Validate CLI arguments
@@ -67,17 +83,68 @@ fi
 SIM_DIR="${EXP_DIR}/${SIM_ID}"
 ANALYSIS_DIR="${SIM_DIR}/analysis"
 
-echo "📂 Analyzing: $SIM_ID"
+# ===============================
+# Read experiment$kind
+#
+# Preferred source is the sim yaml, since expand_design.R propagates the
+# whole experiment: block into every sim yaml. Sim yamls generated before
+# kind: existed won't have it, so fall back to the sibling exp_*.yml in
+# the same config directory, then to "simulation". That keeps every
+# already-expanded experiment working without a `make gen` re-run.
+# ===============================
+read_kind() {
+  grep -m1 '^\s*kind:' "$1" 2>/dev/null | sed 's/.*kind:\s*//' | tr -d '[:space:]"'
+}
+
+KIND="$(read_kind "$SIM_YML")"
+
+if [[ -z "$KIND" ]]; then
+  CONFIG_SIM_DIR="$(dirname "$SIM_YML")"
+  for EXP_YML in "$CONFIG_SIM_DIR"/exp_*.yml; do
+    if [[ -f "$EXP_YML" ]]; then
+      KIND="$(read_kind "$EXP_YML")"
+      [[ -n "$KIND" ]] && break
+    fi
+  done
+fi
+
+KIND="${KIND:-simulation}"
+
+case "$KIND" in
+  simulation)
+    ANALYZER="R/analyze_sim.R"
+    EXPECTED_OUTPUTS=("${SIM_OUTPUTS[@]}")
+    ;;
+  application)
+    ANALYZER="R/analyze_app.R"
+    EXPECTED_OUTPUTS=("${APP_OUTPUTS[@]}")
+    ;;
+  *)
+    echo "❌ Unknown experiment\$kind '${KIND}' in $SIM_YML"
+    echo "   Expected 'simulation' or 'application'."
+    exit 1
+    ;;
+esac
+
+echo "📂 Analyzing: $SIM_ID  (kind: ${KIND})"
 
 # ===============================
 # Skip if already analyzed
 # ===============================
-if [[ -f "$ANALYSIS_DIR/$POINT_FILE" && -f "$ANALYSIS_DIR/$INTERVAL_FILE" && -f "$ANALYSIS_DIR/$INVALID_CI_FILE" ]]; then
+ALL_PRESENT=1
+for OUT in "${EXPECTED_OUTPUTS[@]}"; do
+  if [[ ! -f "$ANALYSIS_DIR/$OUT" ]]; then
+    ALL_PRESENT=0
+    break
+  fi
+done
+
+if [[ "$ALL_PRESENT" -eq 1 ]]; then
   echo "✔ Skipping ${SIM_ID} (already analyzed)"
   exit 0
 fi
 
 mkdir -p "$ANALYSIS_DIR"
-Rscript R/analyze_sim.R "$SIM_DIR"
+Rscript "$ANALYZER" "$SIM_DIR"
 
 echo "✔ Analysis complete: $SIM_ID"

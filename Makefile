@@ -20,7 +20,7 @@ BIN_DIR         := bin
 # -------------------------------------------------
 # Phony targets
 # -------------------------------------------------
-.PHONY: help gen setup submit experiment analyze-sim analyze-exp status dry-run clean test-sim download
+.PHONY: help gen setup submit experiment analyze-sim analyze-exp bundle results submit-analysis status dry-run clean test-sim download
 
 # -------------------------------------------------
 # Help
@@ -35,9 +35,14 @@ help:
 	@echo "  make setup       EXP_CONFIG=..."
 	@echo "  make submit      EXP_CONFIG=..."
 	@echo ""
-	@echo "Analysis:"
+	@echo "Analysis (on Quest):"
 	@echo "  make analyze-sim SIM_CONFIG=<path/to/sim_XX/sim_XX.yml>"
 	@echo "  make analyze-exp EXP_CONFIG=<path/to/exp_vX.yml>"
+	@echo "  make bundle      EXP_CONFIG=<path/to/exp_vX.yml>"
+	@echo "  Analyzer is chosen by experiment\$$kind in the yaml:"
+	@echo "    simulation (default) → frequency properties across iterations"
+	@echo "    application          → per-dataset estimates, CIs and curves"
+	@echo "  bundle collapses all sim_*/analysis into one analysis/bundle.rds."
 	@echo ""
 	@echo "Local testing:"
 	@echo "  make test-sim    SIM_CONFIG=..."
@@ -45,9 +50,22 @@ help:
 	@echo "  Note: make setup must be run first to build model specs."
 	@echo ""
 	@echo "Download from Quest:"
-	@echo "  make download    EXP=multinom/logit_simpson/exp_v1"
-	@echo "  Downloads analysis folders from Quest to local machine."
+	@echo "  make download    EXP=multinom/ne_entropy/exp_v13"
+	@echo "  Downloads analysis/bundle.rds only (one file). Add MODE=tree to"
+	@echo "  pull every sim_*/analysis folder instead."
 	@echo "  Must be run from local machine with Northwestern VPN active."
+	@echo ""
+	@echo "End-to-end results refresh:"
+	@echo "  Application experiment (light — login node is fine):"
+	@echo "    Quest: make results         EXP_CONFIG=<path/to/exp_vX.yml>"
+	@echo "  Simulation experiment (tens of thousands of models — needs Slurm):"
+	@echo "    Quest: make submit-analysis EXP_CONFIG=<path/to/exp_vX.yml>"
+	@echo "  Then, locally with VPN active:"
+	@echo "    Local: make download        EXP=<family/estimand/exp_vX>"
+	@echo ""
+	@echo "  Note: this repo lives in \$$HOME; experiment data lives on project"
+	@echo "  storage. Every target reads experiment\$$exp_dir from the yaml, so"
+	@echo "  always run Make from the repo and let the config locate the data."
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make dry-run     EXP_CONFIG=..."
@@ -116,6 +134,47 @@ endif
 	bash $(BIN_DIR)/analyze_exp.sh $(EXP_CONFIG)
 
 # -------------------------------------------------
+# Bundle an experiment's analysis into one file
+#
+# Collapses every sim_*/analysis output into
+# <exp_dir>/analysis/bundle.rds. Run after analyze-exp; this is what
+# `make download` transfers and what the dissertation figures read.
+# -------------------------------------------------
+bundle:
+ifndef EXP_CONFIG
+	$(error EXP_CONFIG must be set, e.g. EXP_CONFIG=config/multinom/ne_entropy/exp_v13/exp_v13.yml)
+endif
+	bash $(BIN_DIR)/bundle_exp.sh $(EXP_CONFIG)
+
+# -------------------------------------------------
+# Analyze + bundle inline (run on Quest)
+#
+# Suitable for APPLICATION experiments (~20 sims x 1 iteration). For a
+# SIMULATION experiment this reads tens of thousands of model.rds files
+# serially — use submit-analysis instead so it runs as a Slurm array
+# rather than on a login node.
+# -------------------------------------------------
+results:
+ifndef EXP_CONFIG
+	$(error EXP_CONFIG must be set, e.g. EXP_CONFIG=config/multinom/ne_entropy/exp_v13/exp_v13.yml)
+endif
+	@$(MAKE) analyze-exp EXP_CONFIG=$(EXP_CONFIG)
+	@$(MAKE) bundle EXP_CONFIG=$(EXP_CONFIG)
+	@echo "✔ Results ready to download for $(EXP_CONFIG)"
+
+# -------------------------------------------------
+# Analyze + bundle via Slurm (run on Quest)
+#
+# One array task per simulation, then a dependent bundle job. This is the
+# right target for simulation experiments.
+# -------------------------------------------------
+submit-analysis:
+ifndef EXP_CONFIG
+	$(error EXP_CONFIG must be set, e.g. EXP_CONFIG=config/multinom/logit_simpson/exp_v3/exp_v3.yml)
+endif
+	bash $(BIN_DIR)/submit_analysis.sh $(EXP_CONFIG)
+
+# -------------------------------------------------
 # Test single simulation locally
 # -------------------------------------------------
 # Test simulation locally
@@ -130,19 +189,23 @@ endif
 	bash $(BIN_DIR)/test_sim.sh $(SIM_CONFIG)
 
 # -------------------------------------------------
-# Download analysis folders from Quest to local
+# Download analysis results from Quest to local
 #
 # Must be run from local machine with Northwestern VPN active.
-# Requires rsync and SSH access to Quest.
+# Requires SSH access to Quest.
 #
 # Usage:
-#   make download EXP=multinom/logit_simpson/exp_v1
+#   make download EXP=multinom/ne_entropy/exp_v13
+#   make download EXP=... MODE=tree     (per-sim files instead of bundle)
+#
+# Default MODE=bundle pulls only analysis/bundle.rds. Results stay in
+# this repo's experiments/ tree; the dissertation reads them from here.
 # -------------------------------------------------
 download:
 ifndef EXP
-	$(error EXP must be set, e.g. make download EXP=multinom/logit_simpson/exp_v1)
+	$(error EXP must be set, e.g. make download EXP=multinom/ne_entropy/exp_v13)
 endif
-	bash $(BIN_DIR)/download_analysis.sh "$(EXP)" "$(if $(LOCAL),$(LOCAL),$(EXP))"
+	bash $(BIN_DIR)/download_analysis.sh "$(EXP)" "$(if $(LOCAL),$(LOCAL),$(EXP))" "$(if $(MODE),$(MODE),bundle)"
 
 # -------------------------------------------------
 # Dry run (no side effects, predictive)

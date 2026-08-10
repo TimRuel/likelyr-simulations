@@ -4,6 +4,17 @@
 experiment:
   name: multinom_no_effects_logit_entropy_dune
   version: exp_v13
+  # kind selects the analyzer (bin/analyze_sim.sh dispatches on it):
+  #   simulation (default) → R/analyze_sim.R, frequency properties of the
+  #                          estimators aggregated across iterations
+  #   application          → R/analyze_app.R, per-dataset point estimates,
+  #                          CI endpoints and likelihood curves
+  # This is a real-data application: psi_0 is unknown, so bias, squared
+  # error and coverage are not computable. estimand.R still supplies a
+  # placeholder psi_0 = log(J)/2 because likelyr's estimand_spec()
+  # requires one — analyze_app.R deliberately drops every column derived
+  # from it.
+  kind: application
   seed_base: 13000
   specs_dir: /home/tbr0780/likelyr-simulations/applications/multinom/ne_entropy
   exp_dir: /gpfs/projects/p32397/likelyr-simulations/experiments/multinom/ne_entropy/exp_v13
