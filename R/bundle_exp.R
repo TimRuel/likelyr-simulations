@@ -43,18 +43,30 @@
 suppressPackageStartupMessages({
   library(fs)
   library(dplyr)
+  library(yaml)
 })
+
+`%||%` <- function(x, y) if (is.null(x)) y else x
 
 # ============================================================
 # Parse CLI arguments
+#
+# config_dir is optional and is the directory holding this experiment's
+# exp_vX.yml and its generated sim_NN.yml siblings. When supplied, the
+# per-sim design is read from those yamls and shipped as bundle$design.
+#
+# Optional rather than required so an experiment bundled without it still
+# produces a valid (design-less) bundle instead of failing.
 # ============================================================
 args <- commandArgs(trailingOnly = TRUE)
 
-if (length(args) != 1L) {
-  stop("Usage: Rscript bundle_exp.R <exp_dir>", call. = FALSE)
+if (!length(args) %in% c(1L, 2L)) {
+  stop("Usage: Rscript bundle_exp.R <exp_dir> [config_dir]", call. = FALSE)
 }
 
 exp_dir <- path_abs(args[[1]])
+
+config_dir <- if (length(args) == 2L) path_abs(args[[2]]) else NA_character_
 
 if (!dir_exists(exp_dir)) {
   stop("Experiment directory not found: ", exp_dir, call. = FALSE)
@@ -202,6 +214,143 @@ if (length(kinds_found) > 1L) {
     exp_dir,
     ". Was experiment$kind changed without clearing sim_*/analysis?",
     call. = FALSE
+  )
+}
+
+# ============================================================
+# Per-simulation design
+#
+# WHY THIS EXISTS: the metric tables identify a run only by `simulation`
+# ("sim_01"). The factors that actually vary across sims — n_obs,
+# param_dim, and whatever else the experiment sweeps — live nowhere in the
+# analysis outputs, only in the generated sim_NN.yml files. Without them a
+# downloaded bundle cannot answer "how does coverage vary with N?" at all,
+# because the column does not exist.
+#
+# The sim yaml's `design$overrides` block is authoritative and
+# self-describing: expand_design.R writes into it exactly the dotted paths
+# this sim overrides relative to base_simulation. So the design table needs
+# no per-experiment configuration — it reports whatever that experiment
+# happened to sweep. An application sweeps nothing and yields
+# `overrides: []`, giving a design table of just the identifying columns.
+#
+# Column naming: the last dotted component (`data.n_obs` -> `n_obs`)
+# because that is what is convenient to filter and facet on. If two
+# override paths share a last component the full path is used for both
+# (dots to underscores) and the mapping is reported, so a collision can
+# never silently merge two different factors into one column.
+# ============================================================
+build_design <- function(config_dir, exp_id) {
+  sim_ymls <- dir_ls(
+    config_dir,
+    type = "file",
+    regexp = "sim_[0-9]+[.]ya?ml$",
+    fail = FALSE
+  ) |>
+    sort()
+
+  if (length(sim_ymls) == 0L) {
+    message("   ! no sim_*.yml found in ", config_dir, " — design omitted")
+    return(NULL)
+  }
+
+  parsed <- lapply(sim_ymls, function(p) {
+    y <- read_yaml(p)
+
+    ov <- y$design$overrides %||% list()
+
+    # A scalar override becomes a column. Anything else (a list-valued
+    # sweep, say) is reported rather than silently dropped.
+    keep <- list()
+    for (k in names(ov)) {
+      v <- ov[[k]]
+      if (length(v) == 1L && (is.numeric(v) || is.character(v) ||
+        is.logical(v))) {
+        keep[[k]] <- v
+      } else {
+        message(
+          "   ! override '", k, "' in ", path_file(p),
+          " is not a scalar — omitted from design"
+        )
+      }
+    }
+
+    list(
+      ident = list(
+        experiment = exp_id,
+        simulation = y$simulation$sim_id %||%
+          sub("[.]ya?ml$", "", path_file(p)),
+        design_type = as.character(y$design$design_type %||% NA),
+        iterations = as.integer(y$simulation$iterations %||% NA)
+      ),
+      overrides = keep
+    )
+  })
+
+  all_keys <- unique(unlist(lapply(parsed, function(x) names(x$overrides))))
+
+  col_of <- character(0)
+
+  if (length(all_keys) > 0L) {
+    short <- sub("^.*[.]", "", all_keys)
+    dup <- short %in% short[duplicated(short)]
+    col_of <- ifelse(dup, gsub("[.]", "_", all_keys), short)
+    names(col_of) <- all_keys
+
+    renamed <- all_keys[col_of != all_keys]
+    if (length(renamed) > 0L) {
+      message(
+        "   design columns: ",
+        paste0(renamed, " -> ", col_of[renamed], collapse = ", ")
+      )
+    }
+    if (any(dup)) {
+      message(
+        "   ! last-component collision, using full paths for: ",
+        paste(all_keys[dup], collapse = ", ")
+      )
+    }
+  }
+
+  rows <- lapply(parsed, function(x) {
+    r <- x$ident
+    for (k in all_keys) {
+      v <- x$overrides[[k]]
+      r[[col_of[[k]]]] <- if (is.null(v)) NA else v
+    }
+    as_tibble(r)
+  })
+
+  bind_rows(rows)
+}
+
+if (!is.na(config_dir)) {
+  if (!dir_exists(config_dir)) {
+    message("   ! config dir not found: ", config_dir, " — design omitted")
+  } else {
+    design <- build_design(config_dir, exp_id)
+
+    if (!is.null(design) && nrow(design) > 0L) {
+      bundle$design <- design
+
+      swept <- setdiff(
+        names(design),
+        c("experiment", "simulation", "design_type", "iterations")
+      )
+
+      message(
+        "   • ",
+        format("design", width = 17),
+        format(nrow(design), big.mark = ",", width = 9),
+        " rows  swept: ",
+        if (length(swept) > 0L) paste(swept, collapse = ", ") else "(nothing)"
+      )
+    }
+  }
+} else {
+  message(
+    "   ! no config dir given — bundle$design omitted. ",
+    "Pass it as arg 2 to enable design-factor joins."
   )
 }
 
