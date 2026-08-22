@@ -56,10 +56,85 @@ REMOTE_PATH="${REMOTE_BASE}/$(echo "${1}" | sed 's|^experiments/||')"
 LOCAL_PATH="${LOCAL_BASE}/$(echo "${2}" | sed 's|^experiments/||')"
 MODE="${3:-bundle}"
 
-SSH="C:/Windows/System32/OpenSSH/ssh.exe"
+# ======================================================================
+# Choose an ssh that actually runs
+#
+# This used to hardcode C:/Windows/System32/OpenSSH/ssh.exe. That is the
+# NATIVE Windows OpenSSH, and it cannot be executed from the MSYS shell
+# `make` uses on Windows (SHELL := C:/rtools45/usr/bin/bash.exe in the
+# Makefile). It does not error usefully — it produces NO output at all and
+# exits 255, even for `ssh -V`, which cannot legitimately fail. Other
+# System32 binaries (hostname.exe, whoami.exe) run fine from that shell, so
+# the breakage is specific to ssh.exe/scp.exe. Git's MSYS-built ssh works
+# there. Diagnosed 2026-08-22 after `make download` failed with a "check
+# the VPN" message while the network, auth and remote file were all fine.
+#
+# So do not trust a path: verify the candidate RUNS. `ssh -V` printing a
+# version is the check that separates a working binary from the broken one
+# — a `-x` file test passes on both, which is exactly how this hid.
+#
+# Order matters. `ssh` on PATH comes first so Linux and macOS (and Quest)
+# pick the system ssh and never touch the Windows-specific fallbacks.
+# Override with LIKELYR_SSH=/path/to/ssh to force a specific binary.
+# ======================================================================
+ssh_runs() {
+  # Version goes to stderr on most builds; require non-empty output AND a
+  # clean exit. `|| true` so `set -e` does not abort the probe itself.
+  local out
+  out="$("$1" -V 2>&1 || true)"
+  [[ -n "$out" ]]
+}
+
+# The override is accepted as $4 as well as via LIKELYR_SSH, because an
+# environment variable is not reliable here: C:/rtools45/usr/bin/bash.exe
+# -lc — the recipe shell the Makefile selects on Windows — WIPES exported
+# variables (verified: an exported var is empty inside it, while Git Bash
+# -lc preserves it). An argument cannot be lost that way, so the Makefile
+# passes $(LIKELYR_SSH) through positionally.
+SSH_WANT="${4:-${LIKELYR_SSH:-}}"
+
+SSH=""
+SSH_TRIED=()
+
+for cand in \
+  ${SSH_WANT:-} \
+  "$(command -v ssh 2>/dev/null || true)" \
+  "C:/Git/usr/bin/ssh.exe" \
+  "C:/Program Files/Git/usr/bin/ssh.exe" \
+  "C:/Windows/System32/OpenSSH/ssh.exe"
+do
+  [[ -z "$cand" ]] && continue
+  SSH_TRIED+=("$cand")
+  if [[ -x "$cand" ]] && ssh_runs "$cand"; then
+    SSH="$cand"
+    break
+  fi
+  # An explicit request that fails the probe must not be swallowed. Falling
+  # through silently would be the same silent-fallback trap this whole
+  # detection block exists to remove.
+  if [[ -n "${SSH_WANT:-}" && "$cand" == "${SSH_WANT}" ]]; then
+    echo "⚠  Requested ssh ${cand} rejected ('ssh -V' produced no output);" \
+      "falling back to autodetection." >&2
+  fi
+done
+
+if [[ -z "$SSH" ]]; then
+  echo "❌ No working ssh found. Tried:"
+  for t in "${SSH_TRIED[@]}"; do
+    if [[ -x "$t" ]]; then
+      echo "     $t  (exists, but 'ssh -V' produced no output)"
+    else
+      echo "     $t  (not executable)"
+    fi
+  done
+  echo ""
+  echo "   Set LIKELYR_SSH=/path/to/ssh to point at one explicitly."
+  exit 1
+fi
 
 echo "============================================================"
 echo "Downloading analysis results  (mode: ${MODE})"
+echo "  ssh:  ${SSH}"
 echo "  From: ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}"
 echo "  To:   ${LOCAL_PATH}"
 echo "============================================================"
@@ -107,9 +182,21 @@ case "$MODE" in
     if [[ "$SSH_STATUS" -ne 0 ]]; then
       echo ""
       if [[ "$SSH_STATUS" -eq 255 ]]; then
-        echo "❌ Could not connect to ${REMOTE_HOST} (ssh exit 255)."
-        echo "   This is a connection failure, not a missing file —"
-        echo "   check that the Northwestern VPN is active."
+        # 255 is ssh's catch-all: network, auth, host-key, or a binary that
+        # will not launch. The binary was verified above, so that last one
+        # is ruled out — but do NOT claim to know which of the rest it is.
+        # Blaming the VPN unconditionally is what sent a real debugging
+        # session (2026-08-22) chasing a network problem that did not exist
+        # while the actual cause was an unrunnable ssh.exe.
+        echo "❌ ssh exited 255 talking to ${REMOTE_HOST}."
+        echo "   Using: ${SSH}  (verified runnable, so this is not a"
+        echo "   broken ssh binary — it is the connection itself.)"
+        echo ""
+        echo "   255 covers several causes. To see which, run it directly:"
+        echo "     ${SSH} -v ${REMOTE_USER}@${REMOTE_HOST} true"
+        echo ""
+        echo "   Common ones: off-campus without the Northwestern VPN, an"
+        echo "   ssh key not loaded, or a changed host key."
       else
         echo "❌ Connected fine, but no bundle at:"
         echo "     ${REMOTE_BUNDLE}"

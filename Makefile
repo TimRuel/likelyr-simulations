@@ -205,7 +205,7 @@ download:
 ifndef EXP
 	$(error EXP must be set, e.g. make download EXP=multinom/ne_entropy/exp_v13)
 endif
-	bash $(BIN_DIR)/download_analysis.sh "$(EXP)" "$(if $(LOCAL),$(LOCAL),$(EXP))" "$(if $(MODE),$(MODE),bundle)"
+	bash $(BIN_DIR)/download_analysis.sh "$(EXP)" "$(if $(LOCAL),$(LOCAL),$(EXP))" "$(if $(MODE),$(MODE),bundle)" "$(LIKELYR_SSH)"
 
 # -------------------------------------------------
 # Dry run (no side effects, predictive)
